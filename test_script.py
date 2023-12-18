@@ -21,6 +21,7 @@ dash_template_to_duplicate = mb.get_item_info(
     item_id=DASHBOARD_TEMPLATE_ID
 )
 print(dash_template_to_duplicate)
+
 """
 dash_template_to_duplicate = mb.get_item_info(
     item_type='dashboard',

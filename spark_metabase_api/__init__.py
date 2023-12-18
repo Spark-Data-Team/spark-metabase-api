@@ -1,1 +1,1 @@
-from .spark_metabase_api import MB_API
+from .main_methods import Metabase_API

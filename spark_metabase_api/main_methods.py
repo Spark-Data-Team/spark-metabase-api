@@ -2,7 +2,7 @@ import requests
 import getpass
 from datetime import datetime, timedelta
 
-class MB_API:
+class Metabase_API:
     def __init__(self, domain, email=None, password=None, session_id=None, basic_auth=False, is_admin=True):
         self.domain = domain.rstrip("/")
         self.email = email
