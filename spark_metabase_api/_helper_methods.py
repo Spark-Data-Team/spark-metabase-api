@@ -448,83 +448,7 @@ def get_columns_name_id(
             for i in self.get("/api/database/{}/fields".format(db_id))
             if i["table_name"] == table_name
         }
-
-def restrict_collection_access(
-    self,
-    collection_id=None,
-    collection_name=None,
-    authorized_group_ids=[],
-    return_results=False
-):
-    """
-    Enable access to a collection to only some groups.
-    
-    Keyword arguments:
-    collection_id -- the ID of collection to impact.
-    authorized_group_ids -- a list of integers containing the authorized groups
-    return_results -- whether to return the info of the created collection.
-    """
-    
-    # Making sure we have the data we need
-    if not collection_id:
-        if not collection_name:
-            print("Either the name of id of the collection must be provided.")
-        if collection_name == "Root":
-            collection_id = None
-        else:
-            collection_id = self.get_item_id(
-                "collection", collection_name
-            )
-
-    # Enable access only to the Administrators group
-    collections_graph = self.get('/api/collection/graph')
-    for group in collections_graph["groups"]:
-        # Check if the group is not in the list of enabled groups
-        if int(group) not in authorized_group_ids: # Convert group to integer for comparison
-            for collection in collections_graph["groups"][group].keys():
-                if collection == str(collection_id):
-                    collections_graph["groups"][group][collection] = 'none' # Remove access
-
-    res = self.put('/api/collection/graph', json=collections_graph)
-    
-    if return_results:
-        return res
-
-
-def restrict_filter_with_card_values(
-        self, 
-        item_type,
-        item_id,
-        filter_name,
-        card_id,
-        card_column_name,
-        new_filter_name=None,
-        return_results=False
-):
-    clean_filter_name = filter_name.lower().strip()
-    clean_card_column_name = card_column_name.upper().strip()
-    
-    # Add security layer to make sure item_type is dashboard or card only
-    item = self.get('/api/{}}/{}'.format(item_type, item_id))
         
-    for param in item["parameters"]:
-        if clean_filter_name in param["slug"]:
-            if new_filter_name is not None:
-                param["name"] = new_filter_name 
-            param["values_source_type"] = "card"
-            param["values_source_config"] = {
-                "card_id": int(card_id),
-                "value_field": [
-                    "field",
-                    clean_card_column_name,
-                    {
-                        "base-type": "type/Text"
-                    }
-                ]
-            }
-            
-    self.put('/api/{}/{}'.format(item_type, item_id), json=item)
-    
 
 def friendly_names_is_disabled(self):
     """
@@ -544,6 +468,29 @@ def friendly_names_is_disabled(self):
         if i["key"] == "humanization-strategy"
     ][0]
     return friendly_name_setting == "none"  # 'none' means disabled
+
+def get_dashboard_question_ids(
+    self,
+    dashboard_id=None,
+    dashboard_name=None
+):
+    """
+    Return a dictionary with col_name key and col_id value, for the given table_id/table_name in the given db_id/db_name.
+    If column_id_name is True, return a dictionary with col_id key and col_name value.
+    """
+
+    if not dashboard_id:
+        if not dashboard_name:
+            raise ValueError('Either the name or id of the source dashboard must be provided.')
+        else:
+            dashboard_id = self.get_item_id(
+                                    item_type='dashboard',
+                                    item_name=dashboard_name
+            )
+    
+    dashboard = self.get('/api/dashboard/{}'.format(dashboard_id))
+
+    return [card["card_id"] for card in dashboard["ordered_cards"] if card["card_id"] is not None]
 
 
 @staticmethod

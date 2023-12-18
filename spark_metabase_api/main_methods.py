@@ -84,8 +84,7 @@ class Metabase_API:
         friendly_names_is_disabled,
         verbose_print,
         check_collection,
-        restrict_collection_access,
-        restrict_filter_with_card_values
+        get_dashboard_question_ids
     )
 
     ##################################################################
@@ -93,6 +92,7 @@ class Metabase_API:
     ##################################################################
     from .create_methods import create_card, create_collection, create_segment
     from .copy_methods import copy_card, copy_collection, copy_dashboard
+    from .modify_methods import restrict_collection_access, restrict_filter_with_card_values
 
     def search(self, q, item_type=None, archived=False):
         """
