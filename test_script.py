@@ -1,20 +1,26 @@
-from metabase_api import Metabase_API
+from spark_metabase_api import Metabase_API
 
 mb = Metabase_API('https://spark.metabaseapp.com/', session_id='60cccc2a-cafb-4839-aac6-d8f1b9f1924a')
 
 DASHBOARD_TEMPLATE_ID = 11751
 NANGA_PARENT_COLLECTION_ID = 5239
 
+""" to debug
 res = mb.restrict_filter_with_card_values(
-    item_type='dashboard'
+    item_type='dashboard',
     item_id==11751,
     filter_name="Client",
     card_id=17099, # client_filter - Nanga
     card_column_name="client_name"
 )
 print(res)
+"""
 
-
+dash_template_to_duplicate = mb.get_item_info(
+    item_type='dashboard',
+    item_id=DASHBOARD_TEMPLATE_ID
+)
+print(dash_template_to_duplicate)
 """
 dash_template_to_duplicate = mb.get_item_info(
     item_type='dashboard',
