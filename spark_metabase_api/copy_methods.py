@@ -143,7 +143,7 @@ def copy_dashboard(self,
         # So we make a loop instead
         for dashboard_question_id in dashboard_question_ids:
             question = self.get('/api/card/{}'.format(dashboard_question_id))
-            question["name"] = question["name"].replace(' - Duplicate', '')
+            question["name"] = question["name"].rstrip(' - Duplicate')
             self.put(
                     '/api/card/{}'.format(dashboard_question_id), 
                     json={
