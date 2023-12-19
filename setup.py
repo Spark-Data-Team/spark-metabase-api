@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="spark-metabase-api",
-    version="0.1.3",
+    version="0.1.4",
     author="Larry Page",
     author_email="tech@spark.do",
     description="A Python wrapper for the Metabase API developed by the ⭐️ Spark Tech team",
