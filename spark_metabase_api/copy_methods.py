@@ -70,7 +70,8 @@ def copy_dashboard(self,
                 destination_collection_id=None,
                 collection_position=None,
                 deepcopy=False, 
-                destination_subcollection_name=None,
+                destination_question_collection_id=None,
+                destination_question_collection_name=None,
                 postfix=''
             ):
     """
@@ -89,7 +90,8 @@ def copy_dashboard(self,
     deepcopy -- whether to duplicate the cards inside the dashboard (default False).
                             If True, puts the duplicated cards in a collection called "[dashboard_name]'s cards" 
                             in the same path as the duplicated dashboard.
-    destination_subcollection_name -- name of the collection to copy the questions of the dashboard dashboard (if deepcopy = True)
+    destination_question_collection_name -- id of the collection where to store the copies of the questions (if deepcopy = True) 
+    destination_question_collection_name -- name of the collection to copy the questions of the dashboard dashboard (if deepcopy = True)
     postfix -- if destination_dashboard_name is None, adds this string to the end of source_dashboard_name 
                             to make destination_dashboard_name
     """
@@ -124,16 +126,16 @@ def copy_dashboard(self,
     dup_dashboard_id = res['id']
 
     if deepcopy:
-        destination_subcollection_name = "Questions" if destination_subcollection_name is None else destination_subcollection_name
-        question_copies_collection_id = None
+        destination_question_collection_name = "Questions" if destination_question_collection_name is None else destination_question_collection_name
 
-        # Collection not found, create it
-        res = self.create_collection(
-            collection_name=destination_subcollection_name,
-            parent_collection_id=destination_collection_id,
-            return_results=True,
-        )
-        question_copies_collection_id = res['id']
+        if destination_question_collection_id is None:
+            # Collection ID not provided, then create it
+            res = self.create_collection(
+                collection_name=destination_question_collection_name,
+                parent_collection_id=destination_collection_id,
+                return_results=True,
+            )
+            destination_question_collection_id = res['id']
 
         dashboard_question_ids = self.get_dashboard_question_ids(dashboard_id=dup_dashboard_id)
         
@@ -145,12 +147,12 @@ def copy_dashboard(self,
             self.put(
                     '/api/card/{}'.format(dashboard_question_id), 
                     json={
-                        'collection_id': question_copies_collection_id,
+                        'collection_id': destination_question_collection_id,
                         'name': question["name"]
                     }
                 )
 
-        return dup_dashboard_id, question_copies_collection_id, dashboard_question_ids
+        return dup_dashboard_id, destination_question_collection_id, dashboard_question_ids
     
     return dup_dashboard_id, None, None
 
