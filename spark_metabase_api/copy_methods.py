@@ -123,8 +123,7 @@ def copy_dashboard(self,
     if isinstance(collection_position, int) and collection_position is not None:
         shallow_copy_json['collection_position'] = collection_position
     
-    if verbose:
-        self.verbose_print(verbose, 'Duplicating the dashboard "{}" ...'.format(source_dashboard_id))
+    self.verbose_print(verbose, 'Duplicating the dashboard "{}" ...'.format(source_dashboard_id))
 
     res = self.post('/api/dashboard/{}/copy'.format(source_dashboard_id), json=shallow_copy_json)
     dup_dashboard_id = res['id']
@@ -134,8 +133,7 @@ def copy_dashboard(self,
 
         if destination_question_collection_id is None:
             # Collection ID not provided, then create it
-            if verbose:
-                self.verbose_print(verbose, 'Creating a subcollection "{}" ...'.format(destination_question_collection_name))
+            self.verbose_print(verbose, 'Creating a subcollection "{}" ...'.format(destination_question_collection_name))
 
             res = self.create_collection(
                 collection_name=destination_question_collection_name,
@@ -148,8 +146,7 @@ def copy_dashboard(self,
         
         # This doesn't work: https://www.metabase.com/docs/latest/api/card#post-apicardcollections
         # So we make a loop instead
-        if verbose:
-            self.verbose_print(verbose, 'Moving duplicated questions in collection "{}" ...'.format(destination_question_collection_id))
+        self.verbose_print(verbose, 'Moving duplicated questions in collection "{}" ...'.format(destination_question_collection_id))
 
         for dashboard_question_id in dashboard_question_ids:
             question = self.get('/api/card/{}'.format(dashboard_question_id))
