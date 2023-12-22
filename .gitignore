@@ -110,4 +110,4 @@ dmypy.json
 .DS_Store
 
 # Specific files to ignore
-/main.py
+/test_script.py

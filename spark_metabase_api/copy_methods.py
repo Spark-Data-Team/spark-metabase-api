@@ -70,7 +70,10 @@ def copy_dashboard(self,
                 destination_collection_id=None,
                 collection_position=None,
                 deepcopy=False, 
-                postfix=''
+                destination_question_collection_id=None,
+                destination_question_collection_name=None,
+                postfix='',
+                verbose=False
             ):
     """
     Copy the dashboard with the given name/id to the given destination collection. 
@@ -88,6 +91,8 @@ def copy_dashboard(self,
     deepcopy -- whether to duplicate the cards inside the dashboard (default False).
                             If True, puts the duplicated cards in a collection called "[dashboard_name]'s cards" 
                             in the same path as the duplicated dashboard.
+    destination_question_collection_name -- id of the collection where to store the copies of the questions (if deepcopy = True) 
+    destination_question_collection_name -- name of the collection to copy the questions of the dashboard dashboard (if deepcopy = True)
     postfix -- if destination_dashboard_name is None, adds this string to the end of source_dashboard_name 
                             to make destination_dashboard_name
     """
@@ -117,40 +122,48 @@ def copy_dashboard(self,
     # Check if collection_position is an integer and not None
     if isinstance(collection_position, int) and collection_position is not None:
         shallow_copy_json['collection_position'] = collection_position
+    
+    self.verbose_print(verbose, 'Duplicating the dashboard "{}" ...'.format(source_dashboard_id))
 
     res = self.post('/api/dashboard/{}/copy'.format(source_dashboard_id), json=shallow_copy_json)
     dup_dashboard_id = res['id']
 
     if deepcopy:
-        questions_collection_name = "Questions"
-        question_copies_collection_id = None
+        destination_question_collection_name = "Questions" if destination_question_collection_name is None else destination_question_collection_name
 
-        try:
-            question_copies_collection_id = self.get_item_id('collection', questions_collection_name)
-        except ValueError as e:
-            if 'There is no collection with the name' in str(e):
-                # Collection not found, create it
-                res = self.create_collection(
-                    collection_name=questions_collection_name,
-                    parent_collection_id=destination_collection_id,
-                    return_results=True,
+        if destination_question_collection_id is None:
+            # Collection ID not provided, then create it
+            self.verbose_print(verbose, 'Creating a subcollection "{}" ...'.format(destination_question_collection_name))
+
+            res = self.create_collection(
+                collection_name=destination_question_collection_name,
+                parent_collection_id=destination_collection_id,
+                return_results=True,
+            )
+            destination_question_collection_id = res['id']
+
+        dashboard_question_ids = self.get_dashboard_question_ids(dashboard_id=dup_dashboard_id)
+        
+        # This doesn't work: https://www.metabase.com/docs/latest/api/card#post-apicardcollections
+        # So we make a loop instead
+        self.verbose_print(verbose, 'Moving duplicated questions in collection "{}" ...'.format(destination_question_collection_id))
+
+        for dashboard_question_id in dashboard_question_ids:
+            question = self.get('/api/card/{}'.format(dashboard_question_id))
+            question["name"] = question["name"].rstrip(' - Duplicate')
+            self.put(
+                    '/api/card/{}'.format(dashboard_question_id), 
+                    json={
+                        'collection_id': destination_question_collection_id,
+                        'name': question["name"]
+                    }
                 )
-                question_copies_collection_id = res['id']
-                print(f"Sub-collection created: ID {question_copies_collection_id}")
-            else:
-                # If the error is due to some other reason, re-raise it
-                raise
 
-        else:
-            # Collection exists, proceed with your logic if needed
-            print("Sub-collection already exists: ID", question_copies_collection_id)
-
-        return dup_dashboard_id, question_copies_collection_id
+        return dup_dashboard_id, destination_question_collection_id, dashboard_question_ids
     
-    return dup_dashboard_id, None
+    return dup_dashboard_id, None, None
 
 
-## NEED REWORK FOR THE DASHBOARD PART
 def copy_collection(self, source_collection_name=None, source_collection_id=None, 
                     destination_collection_name=None,
                     destination_parent_collection_name=None, destination_parent_collection_id=None, 
