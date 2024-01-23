@@ -400,3 +400,20 @@ class Metabase_API:
             pprint.pprint(ret_dict)
 
         return ret_dict
+
+    def rescan_object_values(
+            self,
+            object_type=None,
+            object_id=None,
+            verbose=False,
+        ):
+            """
+            Manually trigger an update for the FieldValues for this Field/Table.
+            Only applies to Fields that are eligible for FieldValues.
+            """
+            assert object_type in ["table", "field"]
+            if not object_id:
+                raise ValueError("id of the field or table must be provided.")
+            
+            self.verbose_print(verbose, 'Rescan {} values ...'.format(object_type))
+            return self.post("/api/{}/{}/rescan_values".format(object_type, str(object_id)))
