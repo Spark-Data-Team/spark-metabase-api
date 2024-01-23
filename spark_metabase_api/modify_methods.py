@@ -67,6 +67,9 @@ def restrict_filter_with_card_values(
         
     clean_filter_name = filter_name.lower().strip()
     clean_card_column_name = card_column_name.upper().strip()
+
+    if item_type == 'question':
+        item_type = 'card' # avoid this easy mistake
     
     # Add security layer to make sure item_type is dashboard or card only
     item = self.get('/api/{}/{}'.format(item_type, item_id))
