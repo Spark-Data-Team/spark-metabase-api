@@ -6,4 +6,4 @@
 ## 0.1.6 (2024-01-23)
 * Add a new function *rescan_object_values*
 ## 0.1.6 (2024-01-23)
-* Add a new help function *find_cards_with_pattern*
+* Add a new help function *find_cards_via_db_object*
