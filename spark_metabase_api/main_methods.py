@@ -84,7 +84,8 @@ class Metabase_API:
         friendly_names_is_disabled,
         verbose_print,
         check_collection,
-        get_dashboard_question_ids
+        get_dashboard_question_ids,
+        find_cards_via_db_object
     )
 
     ##################################################################
@@ -417,3 +418,4 @@ class Metabase_API:
             
             self.verbose_print(verbose, 'Rescan {} values ...'.format(object_type))
             return self.post("/api/{}/{}/rescan_values".format(object_type, str(object_id)))
+    

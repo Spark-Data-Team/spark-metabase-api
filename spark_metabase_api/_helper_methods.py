@@ -492,6 +492,60 @@ def get_dashboard_question_ids(
 
     return [card["card_id"] for card in dashboard["ordered_cards"] if card["card_id"] is not None]
 
+def find_cards_via_db_object(
+            self, 
+            schema_name=None, 
+            table_name=None, 
+            return_cards=False,
+            verbose=False,
+        ):
+        """
+        Search for cards in Metabase that contain a specific pattern in their native query.
+
+        Args:
+            schema_name (str): The name of the schema to search for.
+            table_name (str): The name of the table to search for.
+            return_cards (bool, optional): Whether to return the matching cards along with the card infos. Defaults to False.
+
+        Returns:
+            List[int] or Tuple[List[Dict[str, Union[int, str]]], List[Dict[str, Any]]]: 
+                A list of question IDs for the cards that match the provided schema name and table name.
+                If return_cards is True, a tuple containing both the card infos and the matching cards is returned.
+        """
+        
+        if not schema_name:
+            raise ValueError("Name of the schema must be provided.")
+    
+        if not table_name:
+            raise ValueError("Name of the table must be provided.")
+
+        all_cards = self.get("/api/card/")
+        pattern = f"{schema_name}.{table_name}".lower()
+
+        self.verbose_print(verbose, 'Searching for {} in all Metabase questions...'.format(pattern))
+
+        card_infos = []
+        cards = []
+
+        for card in all_cards:
+            if card.get("query_type") == "native" and pattern in card.get("dataset_query", {}).get("native", {}).get("query", "").lower():
+                cards.append(card)
+                card_infos.append({
+                    "id": card["id"],
+                    "name": card["name"]
+                })
+        
+        if card_infos:
+            self.verbose_print(verbose, '{} cards found...'.format(len(card_infos)))
+        else:
+            self.verbose_print(verbose, 'No cards found...')
+
+        if return_cards:
+            return card_infos, cards
+        
+        return card_infos
+
+
 
 @staticmethod
 def verbose_print(verbose, msg):
