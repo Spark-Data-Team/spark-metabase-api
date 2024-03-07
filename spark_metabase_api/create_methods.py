@@ -241,12 +241,13 @@ def create_collection(
     res = self.post(
         "/api/collection",
         json={
-            "name": collection_name,
-            "parent_id": parent_collection_id,
+            "name": str(collection_name),
+            "parent_id": int(parent_collection_id),
             'color':'#509EE3',
             'authority_level': 'official' if official else None
-        },
+        }
     )
+    
     if return_results:
         return res
 

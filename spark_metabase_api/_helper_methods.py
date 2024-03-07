@@ -490,7 +490,7 @@ def get_dashboard_question_ids(
     
     dashboard = self.get('/api/dashboard/{}'.format(dashboard_id))
 
-    return [card["card_id"] for card in dashboard["ordered_cards"] if card["card_id"] is not None]
+    return [card["card_id"] for card in dashboard["dashcards"] if card["card_id"] is not None]
 
 def find_cards_via_db_object(
             self, 
