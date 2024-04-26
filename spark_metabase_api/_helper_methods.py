@@ -366,6 +366,20 @@ def get_db_id_from_table_id(self, table_id):
     return tables[0]
 
 
+def get_user_coll_id(self, user_id):
+    """
+    Return user's personnal collection.
+    """
+    collections = [user["personal_collection_id"] for user in self.get("/api/user/") if user["id"] == user_id]
+
+    if len(collections) == 0:
+        raise ValueError(
+            'There is no active user with ID "{}"'.format(user_id)
+        )
+
+    return collections[0]
+
+
 def get_db_info(self, db_name=None, db_id=None, params=None):
     """
     Return Database info. Use 'params' for providing arguments.

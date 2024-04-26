@@ -9,3 +9,5 @@
 * Add a new help function *find_cards_via_db_object*
 ## 0.1.8 (2024-03-07)
 * Upgrade for new MB API dashboard + fix small bugs
+## 0.1.9 (2024-04-26)
+* Add a new help function *get_user_coll_id*
