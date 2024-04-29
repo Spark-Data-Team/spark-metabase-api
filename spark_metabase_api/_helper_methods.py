@@ -370,7 +370,8 @@ def get_user_coll_id(self, user_id):
     """
     Return user's personnal collection.
     """
-    collections = [user["personal_collection_id"] for user in self.get("/api/user/") if user["id"] == user_id]
+    users = self.get("/api/user/")
+    collections = [user["personal_collection_id"] for user in users["data"] if user["id"] == user_id]
 
     if len(collections) == 0:
         raise ValueError(
