@@ -11,3 +11,5 @@
 * Upgrade for new MB API dashboard + fix small bugs
 ## 0.1.9 (2024-04-26)
 * Add a new help function *get_user_coll_id*
+## 0.1.10 (2024-04-29)
+* Add a new argument (remove_default) to *restrict_filter_with_card_values* method
