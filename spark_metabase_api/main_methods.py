@@ -85,7 +85,8 @@ class Metabase_API:
         verbose_print,
         check_collection,
         get_dashboard_question_ids,
-        find_cards_via_db_object
+        find_cards_via_db_object,
+        get_user_coll_id
     )
 
     ##################################################################
