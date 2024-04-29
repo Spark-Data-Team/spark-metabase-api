@@ -13,3 +13,5 @@
 * Add a new help function *get_user_coll_id*
 ## 0.1.10 (2024-04-29)
 * Add a new argument (remove_default) to *restrict_filter_with_card_values* method
+## 0.1.11 (2024-04-29)
+* Add helper function *get_user_coll_id* to main
