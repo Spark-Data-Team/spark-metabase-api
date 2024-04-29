@@ -49,6 +49,7 @@ def restrict_filter_with_card_values(
         card_id,
         card_column_name,
         new_filter_name=None,
+        remove_default=False,
         verbose=False
 ):
     """
@@ -62,6 +63,7 @@ def restrict_filter_with_card_values(
     card_id -- ID of the card from which the dropdown list will be sourced
     card_column_name -- The name of the column where to find the values in the "source" card
     new_filter_name -- (Optional) give a new name to the filter
+    remov_default -- (Optionnal) remove the default values of the filter
     verbose -- prints extra information (default False)
     """
         
@@ -69,7 +71,7 @@ def restrict_filter_with_card_values(
     clean_card_column_name = card_column_name.upper().strip()
 
     if item_type == 'question':
-        item_type = 'card' # avoid this easy mistake
+        item_type = 'card'  # avoid this easy mistake
     
     # Add security layer to make sure item_type is dashboard or card only
     item = self.get('/api/{}/{}'.format(item_type, item_id))
@@ -81,7 +83,9 @@ def restrict_filter_with_card_values(
         if clean_filter_name in clean_param_name:
             filter_found = True
             if new_filter_name is not None:
-                param["name"] = new_filter_name 
+                param["name"] = new_filter_name
+            if remove_default:
+                param["default"] = None
             param["values_source_type"] = "card"
             param["values_source_config"] = {
                 "card_id": int(card_id),
