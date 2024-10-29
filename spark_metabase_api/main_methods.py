@@ -420,3 +420,31 @@ class Metabase_API:
             self.verbose_print(verbose, 'Rescan {} values ...'.format(object_type))
             return self.post("/api/{}/{}/rescan_values".format(object_type, str(object_id)))
     
+    def rescan_db_field_values(
+            self,
+            db_id=None,
+            verbose=False,
+        ):
+            """
+            Trigger a manual scan of the field values for this Database.
+            """
+            if not db_id:
+                raise ValueError("id of the databasemust be provided.")
+            
+            self.verbose_print(verbose, 'Rescan database field values triggered...')
+            return self.post("/api/database/{}/rescan_values".format(db_id))
+
+    def rescan_db_sync_schemas(
+            self,
+            db_id=None,
+            verbose=False,
+        ):
+            """
+            Trigger a manual update of the schema metadata for this Database.
+            """
+            if not db_id:
+                raise ValueError("id of the databasemust be provided.")
+            
+            self.verbose_print(verbose, 'Update database schema metadata triggered...')
+            return self.post("/api/database/{}/sync_schema".format(db_id))
+    
