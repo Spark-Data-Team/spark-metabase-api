@@ -12,10 +12,7 @@ In construction 🚧
 
 ## To-Do
 
-- [ ] Remove search based on names.
-- [ ] Make sure admins are not removed when collection access is being restricted.
-- [ ] Add functions for users, groups and permissions for all of that.
-- [ ] Verbose all functions (parametrize it in function argument of course).
+- [ ] XXX
 
 ## Acknowledgements
 

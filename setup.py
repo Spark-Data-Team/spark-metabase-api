@@ -5,13 +5,13 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="spark-metabase-api",
-    version="0.1.12",
+    version="0.1.13",
     author="Larry Page",
     author_email="tech@spark.do",
     description="A Python wrapper for the Metabase API developed by the ⭐️ Spark Tech team",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/Spark-Data-Team/spark_metabase_api",
+    url="https://github.com/Spark-Data-Team/spark-metabase-api",
     packages=setuptools.find_packages(),
     install_requires=[
         "requests",

@@ -17,3 +17,5 @@
 * Add helper function *get_user_coll_id* to main
 ## 0.1.12 (2024-04-29)
 * Fix small bugs
+## 0.1.13 (2024-10-29)
+* Add 2 functions *rescan_db_field_values* & *rescan_db_sync_schemas* to main
