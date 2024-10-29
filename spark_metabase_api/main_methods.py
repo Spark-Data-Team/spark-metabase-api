@@ -429,7 +429,7 @@ class Metabase_API:
             Trigger a manual scan of the field values for this Database.
             """
             if not db_id:
-                raise ValueError("id of the databasemust be provided.")
+                raise ValueError("id of the database must be provided.")
             
             self.verbose_print(verbose, 'Rescan database field values triggered...')
             return self.post("/api/database/{}/rescan_values".format(db_id))
@@ -443,7 +443,7 @@ class Metabase_API:
             Trigger a manual update of the schema metadata for this Database.
             """
             if not db_id:
-                raise ValueError("id of the databasemust be provided.")
+                raise ValueError("id of the database must be provided.")
             
             self.verbose_print(verbose, 'Update database schema metadata triggered...')
             return self.post("/api/database/{}/sync_schema".format(db_id))
