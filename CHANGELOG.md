@@ -19,6 +19,10 @@
 * Fix small bugs
 ## 0.1.13 (2024-10-29)
 * Add 2 functions *rescan_db_field_values* & *rescan_db_sync_schemas* to main
+## 0.2.0 (2026-05-03)
+### Added
+* New **Infrastructure-as-Code** module `spark_metabase_api.iac`: declare a Metabase collection tree in YAML/JSON and apply it idempotently. Exposes `export`, `plan`, `apply` and a CLI: `spark-metabase {export,plan,apply}`. PyYAML is an optional extra (`pip install spark-metabase-api[iac]`).
+* README rewritten with a worked IaC example.
 ## 0.1.14 (2026-05-03)
 * Fix `__init__`: password argument is now stored, dead `getpass` branch removed
 * Fix `clone_card`: typo where `target_table_id` was reassigned to `source_table_id`
