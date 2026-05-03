@@ -51,9 +51,13 @@ class CardSpec:
 
 @dataclass
 class DashboardSpec:
-    """A Metabase dashboard. `dashcards` is preserved as-is; card_id references
-    inside dashcards are rewritten on apply if they point to cards in the same
-    spec (matched by entity_id, falling back to name within the spec)."""
+    """A Metabase dashboard.
+
+    `dashcards` is preserved verbatim and re-applied as-is. Card ids inside
+    dashcards are NOT rewritten in this version; if a dashboard references a
+    card created by the same spec run, set the dashcard's `card_id` manually
+    after the first apply (or wait for a future release that resolves
+    cross-references)."""
 
     name: str
     description: Optional[str] = None
