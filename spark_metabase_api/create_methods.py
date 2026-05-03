@@ -251,11 +251,12 @@ def create_collection(
         "authority_level": "official" if official else None,
     }
 
-    # 'color' is accepted by older Metabase versions and ignored / rejected by
-    # newer ones (collections no longer carry a color). Try with color first,
-    # fall back to the request without it on a 400.
+    # 'color' is accepted by older Metabase versions and rejected by newer
+    # ones (collections no longer carry a color). Try with color first; only
+    # retry without it when the 400 specifically complained about that field,
+    # so we don't double-POST on real validation errors (duplicate name, ...).
     res = self.post("/api/collection", "raw", json={**payload, "color": "#509EE3"})
-    if res.status_code == 400:
+    if res.status_code == 400 and "color" in res.text.lower():
         res = self.post("/api/collection", "raw", json=payload)
     res = res.json() if res.ok else False
 
