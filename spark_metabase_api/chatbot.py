@@ -413,4 +413,4 @@ def chat(
             "Try a more concrete brief, or re-run with a higher max_tokens."
         )
 
-    return iac._spec_from_dict(spec_dict)
+    return iac.spec_from_dict(spec_dict)

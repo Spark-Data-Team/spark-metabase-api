@@ -10,6 +10,7 @@ to bind a spec entry to an existing item across a rename.
 
 Public surface:
     Spec, CollectionSpec, DashboardSpec, CardSpec
+    spec_to_dict(spec) / spec_from_dict(data) — plain-dict round-trip
     load(path) -> Spec
     dump(spec, path) -> None
     export(client, root_collection) -> CollectionSpec
@@ -98,12 +99,14 @@ Spec = CollectionSpec
 # ---------------------------------------------------------------------------
 
 
-def _spec_to_dict(spec: CollectionSpec) -> Dict[str, Any]:
+def spec_to_dict(spec: CollectionSpec) -> Dict[str, Any]:
+    """Serialize a CollectionSpec to a plain dict (round-trip with spec_from_dict)."""
     return asdict(spec)
 
 
-def _spec_from_dict(data: Dict[str, Any]) -> CollectionSpec:
-    children = [_spec_from_dict(c) for c in data.get("collections") or []]
+def spec_from_dict(data: Dict[str, Any]) -> CollectionSpec:
+    """Deserialize a CollectionSpec from a plain dict (e.g. parsed YAML/JSON)."""
+    children = [spec_from_dict(c) for c in data.get("collections") or []]
     dashboards = [
         DashboardSpec(
             name=d["name"],
@@ -147,11 +150,11 @@ def load(path: str) -> CollectionSpec:
         data = _yaml.safe_load(text)
     else:
         data = json.loads(text)
-    return _spec_from_dict(data)
+    return spec_from_dict(data)
 
 
 def dump(spec: CollectionSpec, path: str) -> None:
-    data = _spec_to_dict(spec)
+    data = spec_to_dict(spec)
     if path.endswith((".yaml", ".yml")):
         if _yaml is None:
             raise ImportError(
