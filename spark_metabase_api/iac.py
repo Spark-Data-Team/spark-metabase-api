@@ -166,8 +166,10 @@ def dump(spec: CollectionSpec, path: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _collection_items(client, collection_id: Union[int, str]) -> List[Dict[str, Any]]:
-    res = client.get("/api/collection/{}/items".format(collection_id))
+def _collection_items(client, collection_id: Union[int, str, None]) -> List[Dict[str, Any]]:
+    # The synthetic Root collection is addressed as 'root' by the Metabase API.
+    cid = "root" if collection_id is None or collection_id == "root" else collection_id
+    res = client.get("/api/collection/{}/items".format(cid))
     if isinstance(res, dict):  # paginated shape introduced in 0.40
         return res.get("data", [])
     return res or []
@@ -187,12 +189,20 @@ def export(client, root_collection: Union[int, str]) -> CollectionSpec:
     return _export_collection(client, root_collection)
 
 
-def _export_collection(client, collection_id: Union[int, str]) -> CollectionSpec:
-    if collection_id == "root" or collection_id is None:
-        info = {"name": "Root", "description": None, "authority_level": None,
-                "entity_id": None}
+def _export_collection(client, collection_id: Union[int, str, None]) -> CollectionSpec:
+    is_root = collection_id is None or collection_id == "root"
+    if is_root:
+        info: Dict[str, Any] = {
+            "name": "Root", "description": None,
+            "authority_level": None, "entity_id": None,
+        }
     else:
         info = client.get("/api/collection/{}".format(collection_id)) or {}
+        if not info:
+            raise RuntimeError(
+                "Failed to fetch collection {} — aborting export to avoid "
+                "silently producing an incomplete spec.".format(collection_id)
+            )
 
     spec = CollectionSpec(
         name=info.get("name") or "Root",
