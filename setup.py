@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="spark-metabase-api",
-    version="0.1.13.1",
+    version="0.3.0",
     author="Larry Page",
     author_email="tech@spark.do",
     description="A Python wrapper for the Metabase API developed by the ⭐️ Spark Tech team",
@@ -16,6 +16,16 @@ setuptools.setup(
     install_requires=[
         "requests",
     ],
+    extras_require={
+        "iac": ["PyYAML>=5.1"],
+        "chatbot": ["anthropic>=0.40.0"],
+        "streamlit": ["streamlit>=1.30", "PyYAML>=5.1", "anthropic>=0.40.0"],
+    },
+    entry_points={
+        "console_scripts": [
+            "spark-metabase=spark_metabase_api.iac:main",
+        ],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

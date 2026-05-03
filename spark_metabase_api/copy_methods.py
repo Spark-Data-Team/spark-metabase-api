@@ -150,7 +150,12 @@ def copy_dashboard(self,
 
         for dashboard_question_id in dashboard_question_ids:
             question = self.get('/api/card/{}'.format(dashboard_question_id))
-            question["name"] = question["name"].rstrip(' - Duplicate')
+            # Metabase's deep copy suffixes duplicated questions with " - Duplicate".
+            # rstrip() would strip any combination of those characters from the end;
+            # removesuffix only strips the exact suffix once.
+            suffix = ' - Duplicate'
+            if question["name"].endswith(suffix):
+                question["name"] = question["name"][: -len(suffix)]
             self.put(
                     '/api/card/{}'.format(dashboard_question_id), 
                     json={

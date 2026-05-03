@@ -19,3 +19,26 @@
 * Fix small bugs
 ## 0.1.13 (2024-10-29)
 * Add 2 functions *rescan_db_field_values* & *rescan_db_sync_schemas* to main
+## 0.3.0 (2026-05-03)
+### Added
+* New **chatbot** module `spark_metabase_api.chatbot`: Claude Opus 4.7 with tool-use that inspects a live Metabase instance and emits a `CollectionSpec` from a natural-language brief. Exposes `chat()` (blocking) and `stream()` (generator yielding `text` / `tool_call` / `tool_result` / `proposed` events for live UIs). `anthropic` is an optional extra (`pip install spark-metabase-api[chatbot]`).
+* New **Streamlit** frontend (`streamlit_app.py`): live chat UX with sidebar credentials, expandable tool-call results, spec review, and Apply button. Optional extra (`pip install spark-metabase-api[streamlit]`).
+* `iac` now resolves `card_name` forward references in dashcards at apply time, so a single spec run can both create cards and create a dashboard that references them by name.
+## 0.2.0 (2026-05-03)
+### Added
+* New **Infrastructure-as-Code** module `spark_metabase_api.iac`: declare a Metabase collection tree in YAML/JSON and apply it idempotently. Exposes `export`, `plan`, `apply` and a CLI: `spark-metabase {export,plan,apply}`. PyYAML is an optional extra (`pip install spark-metabase-api[iac]`).
+* README rewritten with a worked IaC example.
+## 0.1.14 (2026-05-03)
+* Fix `__init__`: password argument is now stored, dead `getpass` branch removed
+* Fix `clone_card`: typo where `target_table_id` was reassigned to `source_table_id`
+* Remove unsafe `eval()` from `clone_card` and `create_card` (could break on names containing quotes); MBQL is now mutated via a tree walk
+* `clone_card` now fetches the card with `?legacy-mbql=true` to keep MBQL 4 shapes on Metabase 0.57+
+* Fix `check_collection`: NameError on duplicate-collection branch
+* Fix `copy_dashboard`: replaced `rstrip(' - Duplicate')` (strips a *set* of characters) with a real suffix removal
+* `restrict_collection_access`: now writes 'none' for groups whose entry is missing in the graph (Metabase 0.56.13 stopped returning explicit 'none' values)
+* `restrict_filter_with_card_values`: `column_base_type` now configurable, forced uppercase on column names is opt-out via `preserve_column_case=True`, doc typo fixed
+* `add_card_to_dashboard`: now falls back to `PUT /api/dashboard/:id` with `dashcards` array when the legacy `POST /api/dashboard/:id/cards` is unavailable
+* `get_dashboard_question_ids`: handles both new `dashcards` and legacy `ordered_cards` shapes
+* `create_collection`: `color` is sent for older Metabase but transparently dropped on a 400 from newer Metabase
+* Hardened `_rest_methods`: shared `requests.Session`, default 30s timeout on every call, network errors during session validation no longer raise
+* `validate_session` and `is_session_valid` deduplicated
