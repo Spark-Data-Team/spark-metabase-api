@@ -21,7 +21,7 @@ Typical usage:
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 try:  # anthropic is an optional extra
     import anthropic  # type: ignore
@@ -115,33 +115,22 @@ def _require_anthropic() -> None:
         )
 
 
-def chat(
+def _build_tools(
     metabase,
-    prompt: str,
-    *,
-    model: str = "claude-opus-4-7",
-    max_tokens: int = 8192,
-    anthropic_client: Optional[Any] = None,
-    verbose: bool = True,
-) -> CollectionSpec:
-    """Run a Claude tool-use session that produces a CollectionSpec.
+    on_propose: Callable[[Dict[str, Any]], None],
+    on_tool_call: Optional[Callable[[str, Dict[str, Any], str], None]] = None,
+) -> List[Any]:
+    """Build the agent's read-only inspection tools + the propose-spec sink.
 
-    Keyword arguments:
-    metabase -- a configured Metabase_API instance
-    prompt -- natural-language description of the dashboard to build
-    model -- Claude model id (default 'claude-opus-4-7')
-    max_tokens -- per-turn output cap (default 8192)
-    anthropic_client -- optional pre-built anthropic.Anthropic
-    verbose -- print Claude's progress to stdout (default True)
-
-    Returns the CollectionSpec the agent emitted via propose_dashboard_spec.
-    Raises RuntimeError if the agent finished without proposing one.
+    `on_propose(spec)` is called when the agent emits the final spec.
+    `on_tool_call(name, input, result)` (optional) is called after every
+    inspection tool returns, for UI logging.
     """
-    _require_anthropic()
-    client = anthropic_client or anthropic.Anthropic()
 
-    # Bag captured in the closure of propose_dashboard_spec.
-    proposed: Dict[str, Any] = {}
+    def _record(name: str, input: Dict[str, Any], result: str) -> str:
+        if on_tool_call is not None:
+            on_tool_call(name, input, result)
+        return result
 
     @beta_tool
     def list_databases() -> str:
@@ -161,7 +150,7 @@ def chat(
             }
             for d in (res or [])
         ]
-        return json.dumps(items, ensure_ascii=False)
+        return _record("list_databases", {}, json.dumps(items, ensure_ascii=False))
 
     @beta_tool
     def list_tables(database_id: int) -> str:
@@ -186,7 +175,11 @@ def chat(
             }
             for t in tables
         ]
-        return json.dumps(items, ensure_ascii=False)
+        return _record(
+            "list_tables",
+            {"database_id": database_id},
+            json.dumps(items, ensure_ascii=False),
+        )
 
     @beta_tool
     def describe_table(table_id: int) -> str:
@@ -209,18 +202,20 @@ def chat(
             }
             for f in (meta.get("fields") or [])
         ]
-        return json.dumps(
-            {
-                "table": {
-                    "id": meta.get("id"),
-                    "name": meta.get("name"),
-                    "schema": meta.get("schema"),
-                    "description": meta.get("description"),
-                    "db_id": meta.get("db_id"),
-                },
-                "fields": fields,
+        payload = {
+            "table": {
+                "id": meta.get("id"),
+                "name": meta.get("name"),
+                "schema": meta.get("schema"),
+                "description": meta.get("description"),
+                "db_id": meta.get("db_id"),
             },
-            ensure_ascii=False,
+            "fields": fields,
+        }
+        return _record(
+            "describe_table",
+            {"table_id": table_id},
+            json.dumps(payload, ensure_ascii=False),
         )
 
     @beta_tool
@@ -234,17 +229,19 @@ def chat(
 
         Returns a JSON array of {id, name, model, collection_id} entries."""
         results = metabase.search(query, item_type=item_type) or []
-        return json.dumps(
-            [
-                {
-                    "id": r.get("id"),
-                    "name": r.get("name"),
-                    "model": r.get("model"),
-                    "collection_id": r.get("collection_id"),
-                }
-                for r in results
-            ],
-            ensure_ascii=False,
+        items = [
+            {
+                "id": r.get("id"),
+                "name": r.get("name"),
+                "model": r.get("model"),
+                "collection_id": r.get("collection_id"),
+            }
+            for r in results
+        ]
+        return _record(
+            "search_metabase",
+            {"query": query, "item_type": item_type},
+            json.dumps(items, ensure_ascii=False),
         )
 
     @beta_tool
@@ -262,7 +259,11 @@ def chat(
         infos = metabase.find_cards_via_db_object(
             schema_name=schema_name, table_name=table_name,
         ) or []
-        return json.dumps(infos, ensure_ascii=False)
+        return _record(
+            "find_cards_using_table",
+            {"schema_name": schema_name, "table_name": table_name},
+            json.dumps(infos, ensure_ascii=False),
+        )
 
     @beta_tool
     def propose_dashboard_spec(spec: Dict[str, Any]) -> str:
@@ -281,9 +282,58 @@ def chat(
         if not (spec.get("cards") or spec.get("dashboards") or spec.get("collections")):
             return ("Error: spec must include at least one card, dashboard, "
                     "or nested collection — empty specs are not useful.")
+        on_propose(spec)
+        return "ok"
+
+    return [
+        list_databases,
+        list_tables,
+        describe_table,
+        search_metabase,
+        find_cards_using_table,
+        propose_dashboard_spec,
+    ]
+
+
+# Event tuple types yielded by `stream`. Kept as plain tuples so callers don't
+# need to import any class — easy to pattern-match in a UI loop.
+ChatEvent = Tuple[str, Any]
+#   ("text",        str)              — assistant prose
+#   ("tool_call",   {"name", "input"}) — agent invoked a tool
+#   ("tool_result", {"name", "input", "result"}) — tool returned (truncated str)
+#   ("proposed",    dict)              — final CollectionSpec dict (last event)
+
+
+def stream(
+    metabase,
+    prompt: str,
+    *,
+    model: str = "claude-opus-4-7",
+    max_tokens: int = 8192,
+    anthropic_client: Optional[Any] = None,
+) -> Iterator[ChatEvent]:
+    """Run the agent and yield events as they happen.
+
+    Use this to drive a UI that updates as Claude works (e.g. Streamlit).
+    For a blocking call that just returns the final spec, use ``chat()``.
+    """
+    _require_anthropic()
+    client = anthropic_client or anthropic.Anthropic()
+
+    proposed: Dict[str, Any] = {}
+    pending_tool_results: List[Dict[str, Any]] = []
+
+    def _on_propose(spec: Dict[str, Any]) -> None:
         proposed.clear()
         proposed.update(spec)
-        return "ok"
+
+    def _on_tool_call(name: str, input: Dict[str, Any], result: str) -> None:
+        # Truncate large results so the UI stays readable; the agent still
+        # sees the full result via the tool runner.
+        snippet = result if len(result) <= 4000 else result[:4000] + "...[truncated]"
+        pending_tool_results.append({"name": name, "input": input, "result": snippet})
+
+    tools = _build_tools(metabase, on_propose=_on_propose, on_tool_call=_on_tool_call)
 
     runner = client.beta.messages.tool_runner(
         model=model,
@@ -292,35 +342,75 @@ def chat(
         output_config={"effort": "xhigh"},
         cache_control={"type": "ephemeral"},
         system=SYSTEM_PROMPT,
-        tools=[
-            list_databases,
-            list_tables,
-            describe_table,
-            search_metabase,
-            find_cards_using_table,
-            propose_dashboard_spec,
-        ],
+        tools=tools,
         messages=[{"role": "user", "content": prompt}],
     )
 
     for message in runner:
-        if not verbose:
-            continue
+        # Drain results from tool calls executed since the previous message.
+        while pending_tool_results:
+            yield ("tool_result", pending_tool_results.pop(0))
         for block in message.content:
-            if getattr(block, "type", None) == "text" and getattr(block, "text", ""):
-                print(block.text)
-            elif getattr(block, "type", None) == "tool_use":
-                args = (block.input or {}) if hasattr(block, "input") else {}
-                summary = ", ".join(
-                    "{}={}".format(k, json.dumps(v, ensure_ascii=False)[:80])
-                    for k, v in args.items()
-                )
-                print("    → {}({})".format(block.name, summary))
+            btype = getattr(block, "type", None)
+            if btype == "text" and getattr(block, "text", ""):
+                yield ("text", block.text)
+            elif btype == "tool_use":
+                yield ("tool_call", {
+                    "name": block.name,
+                    "input": dict(block.input or {}),
+                })
 
-    if not proposed:
+    while pending_tool_results:
+        yield ("tool_result", pending_tool_results.pop(0))
+
+    if proposed:
+        yield ("proposed", dict(proposed))
+
+
+def chat(
+    metabase,
+    prompt: str,
+    *,
+    model: str = "claude-opus-4-7",
+    max_tokens: int = 8192,
+    anthropic_client: Optional[Any] = None,
+    verbose: bool = True,
+) -> CollectionSpec:
+    """Run a Claude tool-use session that produces a CollectionSpec.
+
+    Blocking convenience wrapper around ``stream()``. Returns the final spec.
+
+    Keyword arguments:
+    metabase -- a configured Metabase_API instance
+    prompt -- natural-language description of the dashboard to build
+    model -- Claude model id (default 'claude-opus-4-7')
+    max_tokens -- per-turn output cap (default 8192)
+    anthropic_client -- optional pre-built anthropic.Anthropic
+    verbose -- print Claude's progress to stdout (default True)
+
+    Raises RuntimeError if the agent finished without proposing a spec.
+    """
+    spec_dict: Optional[Dict[str, Any]] = None
+    for event_type, payload in stream(
+        metabase, prompt,
+        model=model, max_tokens=max_tokens,
+        anthropic_client=anthropic_client,
+    ):
+        if event_type == "proposed":
+            spec_dict = payload
+        elif verbose and event_type == "text":
+            print(payload)
+        elif verbose and event_type == "tool_call":
+            args = ", ".join(
+                "{}={}".format(k, json.dumps(v, ensure_ascii=False)[:80])
+                for k, v in payload["input"].items()
+            )
+            print("    → {}({})".format(payload["name"], args))
+
+    if spec_dict is None:
         raise RuntimeError(
             "The agent finished without calling propose_dashboard_spec. "
             "Try a more concrete brief, or re-run with a higher max_tokens."
         )
 
-    return iac._spec_from_dict(proposed)
+    return iac._spec_from_dict(spec_dict)
