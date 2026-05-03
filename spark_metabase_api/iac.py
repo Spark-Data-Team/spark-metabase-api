@@ -229,7 +229,6 @@ _CARD_OPAQUE_KEYS = (
     "parameters", "parameter_mappings", "result_metadata",
     "cache_ttl", "archived",
 )
-_DASHBOARD_OPAQUE_KEYS = ("parameters",)
 
 
 def _export_card(client, card_id: int) -> CardSpec:
