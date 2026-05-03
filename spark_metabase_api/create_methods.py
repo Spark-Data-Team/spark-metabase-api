@@ -122,17 +122,22 @@ def create_card(
 
     elif column_order == "db_table_order":  # default
         ### find the actual order of columns in the table as they appear in the database
-        # Create a temporary card for retrieving column ordering
-        json_str = """{{'dataset_query': {{ 'database': {1},
-                                            'native': {{'query': 'SELECT * from "{2}";' }},
-                                            'type': 'native' }},
-                        'display': 'table',
-                        'name': '{0}',
-                        'visualization_settings': {{}} }}""".format(
-            card_name, db_id, table_name
-        )
+        # Create a temporary card for retrieving column ordering. The table
+        # name comes from Metabase's own metadata, but we still escape any
+        # double-quote that would otherwise close the identifier.
+        safe_table_name = str(table_name).replace('"', '""')
+        probe_card = {
+            "dataset_query": {
+                "database": db_id,
+                "native": {"query": 'SELECT * from "{}";'.format(safe_table_name)},
+                "type": "native",
+            },
+            "display": "table",
+            "name": card_name,
+            "visualization_settings": {},
+        }
 
-        res = self.post("/api/card/", json=eval(json_str))
+        res = self.post("/api/card/", json=probe_card)
         if not res:
             print("Card Creation Failed!")
             return res
@@ -160,18 +165,20 @@ def create_card(
         )
 
     # default json
-    json_str = """{{'dataset_query': {{'database': {1},
-                                        'query': {{'fields': {4},
-                                                                'source-table': {2}}},
-                                        'type': 'query'}},
-                    'display': 'table',
-                    'name': '{0}',
-                    'collection_id': {3},
-                    'visualization_settings': {{}}
-                    }}""".format(
-        card_name, db_id, table_id, collection_id, column_id_list_str
-    )
-    json = eval(json_str)
+    json = {
+        "dataset_query": {
+            "database": db_id,
+            "query": {
+                "fields": column_id_list_str,
+                "source-table": table_id,
+            },
+            "type": "query",
+        },
+        "display": "table",
+        "name": card_name,
+        "collection_id": collection_id,
+        "visualization_settings": {},
+    }
 
     # Add/Rewrite data to the default json from custom_json
     if custom_json:
@@ -230,7 +237,7 @@ def create_collection(
     # Making sure we have the data we need
     if not parent_collection_id:
         if not parent_collection_name:
-            print("Either the name of id of the parent collection must be provided.")
+            raise ValueError("Either the name or id of the parent collection must be provided.")
         if parent_collection_name == "Root":
             parent_collection_id = None
         else:
@@ -238,16 +245,20 @@ def create_collection(
                 "collection", parent_collection_name
             )
 
-    res = self.post(
-        "/api/collection",
-        json={
-            "name": str(collection_name),
-            "parent_id": int(parent_collection_id),
-            'color':'#509EE3',
-            'authority_level': 'official' if official else None
-        }
-    )
-    
+    payload = {
+        "name": str(collection_name),
+        "parent_id": int(parent_collection_id) if parent_collection_id is not None else None,
+        "authority_level": "official" if official else None,
+    }
+
+    # 'color' is accepted by older Metabase versions and ignored / rejected by
+    # newer ones (collections no longer carry a color). Try with color first,
+    # fall back to the request without it on a 400.
+    res = self.post("/api/collection", "raw", json={**payload, "color": "#509EE3"})
+    if res.status_code == 400:
+        res = self.post("/api/collection", "raw", json=payload)
+    res = res.json() if res.ok else False
+
     if return_results:
         return res
 

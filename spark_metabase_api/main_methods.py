@@ -1,24 +1,30 @@
-import requests
 import getpass
+import json
+
+import requests
+
+
+DEFAULT_TIMEOUT = 30
 
 
 class Metabase_API:
     def __init__(self, domain, email=None, password=None, session_id=None, basic_auth=False, is_admin=True):
         self.domain = domain.rstrip("/")
         self.email = email
-        self.password = None
+        self.password = password
         self.session_id = session_id
         self.header = {"X-Metabase-Session": self.session_id} if self.session_id else None
         self.auth = (self.email, self.password) if basic_auth else None
         self.is_admin = is_admin
         self.session_expiry = None
+        self._http = requests.Session()
 
         # Check if either email/password or a session ID is provided
-        if not (self.email and password) and not self.session_id:
-            raise ValueError("You must provide either email/password or a valid session ID.")
-
-        if password:
-            self.password = getpass.getpass(prompt="Please enter your password: ") if password is None else password
+        if not (self.email and self.password) and not self.session_id:
+            if self.email and not self.password:
+                self.password = getpass.getpass(prompt="Please enter your password: ")
+            else:
+                raise ValueError("You must provide either email/password or a valid session ID.")
 
         if not self.is_admin:
             print(
@@ -27,15 +33,23 @@ class Metabase_API:
                 Without this some of the functions of the current package may not work as expected.
                 """
             )
-        
+
         # Validate session ID or authenticate
         if not self.session_id or not self.is_session_valid():
             self.authenticate()
 
     def is_session_valid(self):
         """Check if the session ID is valid"""
-        test_endpoint = "/api/user/current"
-        response = requests.get(self.domain + test_endpoint, headers=self.header)
+        if not self.header:
+            return False
+        try:
+            response = self._http.get(
+                self.domain + "/api/user/current",
+                headers=self.header,
+                timeout=DEFAULT_TIMEOUT,
+            )
+        except requests.RequestException:
+            return False
         return response.status_code == 200
 
     def authenticate(self):
@@ -44,7 +58,12 @@ class Metabase_API:
             raise ValueError("Email and password are required for authentication.")
 
         conn_header = {"username": self.email, "password": self.password}
-        res = requests.post(self.domain + "/api/session", json=conn_header, auth=self.auth)
+        res = self._http.post(
+            self.domain + "/api/session",
+            json=conn_header,
+            auth=self.auth,
+            timeout=DEFAULT_TIMEOUT,
+        )
 
         if not res.ok:
             raise Exception(f"Authentication failed: {res.text}")
@@ -57,17 +76,11 @@ class Metabase_API:
 
 
     def validate_session(self):
-        """Get a new session ID if the previous one has expired"""
-        res = requests.get(
-            self.domain + "/api/user/current", headers=self.header, auth=self.auth
-        )
-
-        if res.ok:  # 200
+        """Re-authenticate if the current session has expired."""
+        if self.is_session_valid():
             return True
-        elif res.status_code == 401:  # unauthorized
-            return self.authenticate()
-        else:
-            raise Exception(res)
+        self.authenticate()
+        return True
 
     # import REST Methods
     from ._rest_methods import get, post, put, delete
@@ -160,9 +173,7 @@ class Metabase_API:
             )
 
         # add the filter values (if any)
-        import json
-
-        params_json = {"parameters": json.dumps(parameters)}
+        params_json = {"parameters": json.dumps(parameters or [])}
 
         # get the results
         res = self.post(
@@ -221,13 +232,19 @@ class Metabase_API:
                     "Either the name or id of the target table needs to be provided."
                 )
             else:
-                source_table_id = self.get_item_id("table", source_table_name)
+                target_table_id = self.get_item_id("table", target_table_name)
 
         if ignore_these_filters:
             assert type(ignore_these_filters) == list
 
-        # get the card info
-        card_info = self.get_item_info("card", card_id)
+        # Fetch the card info. Force MBQL 4 on Metabase 0.57+ so we keep the
+        # 'field-id'/'field' shapes this method understands.
+        card_info = self.get(
+            "/api/card/{}".format(card_id),
+            params={"legacy-mbql": "true"},
+        )
+        if not card_info:
+            raise ValueError('There is no card with the id "{}"'.format(card_id))
         # get the mappings, both name -> id and id -> name
         target_table_col_name_id_mapping = self.get_columns_name_id(
             table_id=target_table_id
@@ -268,25 +285,26 @@ class Metabase_API:
             # change the underlying table for the card
             query_data["source-table"] = target_table_id
 
-            # transform to string so it is easier to replace the column IDs
-            query_data_str = str(query_data)
+            # walk the MBQL tree and remap column ids in-place; safer than
+            # round-tripping through repr/eval which breaks on quotes/unicode.
+            def _remap_field_ids(node):
+                if isinstance(node, list):
+                    if (
+                        len(node) >= 2
+                        and node[0] in ("field", "field-id")
+                        and isinstance(node[1], int)
+                    ):
+                        col_name = source_table_col_id_name_mapping.get(node[1])
+                        if col_name in target_table_col_name_id_mapping:
+                            node[1] = target_table_col_name_id_mapping[col_name]
+                    for item in node:
+                        _remap_field_ids(item)
+                elif isinstance(node, dict):
+                    for value in node.values():
+                        _remap_field_ids(value)
 
-            # find column IDs
-            import re
-
-            res = re.findall(r"\['field', .*?\]", query_data_str)
-            source_column_IDs = [eval(i)[1] for i in res]
-
-            # replace column IDs from old table with the column IDs from new table
-            for source_col_id in source_column_IDs:
-                source_col_name = source_table_col_id_name_mapping[source_col_id]
-                target_col_id = target_table_col_name_id_mapping[source_col_name]
-                query_data_str = query_data_str.replace(
-                    "['field', {}, ".format(source_col_id),
-                    "['field', {}, ".format(target_col_id),
-                )
-
-            card_info["dataset_query"]["query"] = eval(query_data_str)
+            _remap_field_ids(query_data)
+            card_info["dataset_query"]["query"] = query_data
 
         new_card_json = {}
         for key in ["dataset_query", "display", "visualization_settings"]:
@@ -387,20 +405,50 @@ class Metabase_API:
         return self.delete("/api/{}/{}".format(item_type, item_id))
 
     def add_card_to_dashboard(self, card_id, dashboard_id):
-        params = {"cardId": card_id}
-        self.post(f"/api/dashboard/{dashboard_id}/cards", json=params)
+        """
+        Append a card to a dashboard.
+
+        Uses the modern endpoint (PUT /api/dashboard/:id with the full dashcards
+        payload) and falls back to the legacy POST /api/dashboard/:id/cards on
+        older Metabase versions.
+        """
+        legacy_res = self.post(
+            "/api/dashboard/{}/cards".format(dashboard_id),
+            "raw",
+            json={"cardId": card_id},
+        )
+        if legacy_res.ok:
+            return legacy_res.json() if legacy_res.content else None
+
+        # Modern path: rewrite the full dashcards array. Append the new card at
+        # the bottom of the dashboard, full width.
+        dashboard = self.get("/api/dashboard/{}".format(dashboard_id))
+        dashcards = list(dashboard.get("dashcards") or dashboard.get("ordered_cards") or [])
+
+        max_row = max((dc.get("row", 0) + dc.get("size_y", 0) for dc in dashcards), default=0)
+        new_dashcard = {
+            "id": -1,  # negative id signals creation to Metabase
+            "card_id": card_id,
+            "row": max_row,
+            "col": 0,
+            "size_x": 24,
+            "size_y": 8,
+            "parameter_mappings": [],
+            "visualization_settings": {},
+        }
+        dashcards.append(new_dashcard)
+        return self.put(
+            "/api/dashboard/{}".format(dashboard_id),
+            json={"dashcards": dashcards},
+        )
 
     @staticmethod
     def make_json(raw_json, prettyprint=False):
         """Turn the string copied from the Inspect->Network window into a Dict."""
-        import json
-
         ret_dict = json.loads(raw_json)
         if prettyprint:
             import pprint
-
             pprint.pprint(ret_dict)
-
         return ret_dict
 
     def rescan_object_values(
