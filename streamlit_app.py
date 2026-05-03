@@ -16,9 +16,14 @@ from __future__ import annotations
 import json
 import os
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Tuple
 
 import streamlit as st
+
+try:  # anthropic is provided by the [streamlit] extra; fail clearly if missing
+    import anthropic
+except ImportError:  # pragma: no cover
+    anthropic = None  # type: ignore
 
 from spark_metabase_api import Metabase_API, chatbot, iac
 
@@ -45,13 +50,12 @@ st.caption(
 
 def _init_state() -> None:
     defaults: Dict[str, Any] = {
-        "metabase": None,            # connected Metabase_API instance
-        "history": [],               # list of (role, content) — chat transcript
-        "current_events": [],        # events from the latest agent run
-        "proposed_spec": None,       # CollectionSpec produced by Claude
-        "plan": None,                # iac.Plan computed from the spec
-        "applied": False,            # whether the spec was applied
-        "error": None,
+        "metabase": None,         # connected Metabase_API instance
+        "anthropic_client": None, # configured anthropic.Anthropic (per session)
+        "history": [],            # list of (role, content) — chat transcript
+        "proposed_spec": None,    # CollectionSpec produced by Claude
+        "plan": None,             # iac.Plan computed from the spec
+        "applied": False,         # whether the spec was applied
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
@@ -104,14 +108,25 @@ with st.sidebar:
 
     st.divider()
     st.header("Anthropic")
+    if anthropic is None:
+        st.error(
+            "The `anthropic` package is not installed. "
+            "Run: pip install \"spark-metabase-api[streamlit]\""
+        )
     api_key = st.text_input(
         "API key",
         type="password",
         value=os.environ.get("ANTHROPIC_API_KEY", ""),
-        help="Stored only in this session; not written to disk.",
+        help="Stored only in this session's memory; never written to disk "
+             "or to the process environment.",
     )
-    if api_key:
-        os.environ["ANTHROPIC_API_KEY"] = api_key
+    if api_key and anthropic is not None:
+        # Build a dedicated client for this session — do NOT touch os.environ
+        # (the Streamlit process is shared across user sessions in any
+        # multi-user deployment, so a global env var leaks across them).
+        st.session_state.anthropic_client = anthropic.Anthropic(api_key=api_key)
+    elif not api_key:
+        st.session_state.anthropic_client = None
 
     model = st.selectbox(
         "Model",
@@ -122,10 +137,10 @@ with st.sidebar:
 
     st.divider()
     if st.button("Reset conversation", use_container_width=True):
-        for key in ("history", "current_events", "proposed_spec", "plan", "applied", "error"):
-            st.session_state[key] = [] if key in ("history", "current_events") else (
-                False if key == "applied" else None
-            )
+        st.session_state.history = []
+        st.session_state.proposed_spec = None
+        st.session_state.plan = None
+        st.session_state.applied = False
         st.rerun()
 
 
@@ -166,9 +181,9 @@ def _spec_to_yaml_or_json(spec: iac.CollectionSpec) -> str:
     try:
         import yaml  # type: ignore
 
-        return yaml.safe_dump(iac._spec_to_dict(spec), sort_keys=False, allow_unicode=True)
+        return yaml.safe_dump(iac.spec_to_dict(spec), sort_keys=False, allow_unicode=True)
     except ImportError:
-        return json.dumps(iac._spec_to_dict(spec), indent=2, ensure_ascii=False)
+        return json.dumps(iac.spec_to_dict(spec), indent=2, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +211,7 @@ if prompt:
     if st.session_state.metabase is None:
         st.error("Connect to Metabase first (sidebar).")
         st.stop()
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if st.session_state.anthropic_client is None:
         st.error("Provide your Anthropic API key (sidebar).")
         st.stop()
 
@@ -204,16 +219,19 @@ if prompt:
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    rendered_events: List[tuple] = []
+    rendered_events: List[Tuple[str, Any]] = []
     with st.chat_message("assistant"):
         try:
             for ev_type, payload in chatbot.stream(
-                st.session_state.metabase, prompt, model=model,
+                st.session_state.metabase,
+                prompt,
+                model=model,
+                anthropic_client=st.session_state.anthropic_client,
             ):
                 rendered_events.append((ev_type, payload))
                 _render_event(ev_type, payload)
                 if ev_type == "proposed":
-                    st.session_state.proposed_spec = iac._spec_from_dict(payload)
+                    st.session_state.proposed_spec = iac.spec_from_dict(payload)
         except Exception as exc:  # pragma: no cover - UI feedback
             st.error("Agent crashed: {}".format(exc))
             with st.expander("Traceback"):
