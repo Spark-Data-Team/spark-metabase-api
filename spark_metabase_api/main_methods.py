@@ -433,6 +433,12 @@ class Metabase_API:
         # Modern path: rewrite the full dashcards array. Append the new card at
         # the bottom of the dashboard, full width.
         dashboard = self.get("/api/dashboard/{}".format(dashboard_id))
+        if not dashboard:
+            raise ValueError(
+                "Could not load dashboard {} (legacy POST returned {} and the "
+                "GET to fall back to PUT also failed)."
+                .format(dashboard_id, legacy_res.status_code)
+            )
         dashcards = list(dashboard.get("dashcards") or dashboard.get("ordered_cards") or [])
 
         max_row = max((dc.get("row", 0) + dc.get("size_y", 0) for dc in dashcards), default=0)
