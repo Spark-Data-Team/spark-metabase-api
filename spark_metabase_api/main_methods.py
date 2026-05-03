@@ -245,6 +245,16 @@ class Metabase_API:
         )
         if not card_info:
             raise ValueError('There is no card with the id "{}"'.format(card_id))
+
+        dataset_query = card_info.get("dataset_query") or {}
+        query_type = dataset_query.get("type")
+        if query_type not in ("native", "query"):
+            raise ValueError(
+                "Card {} has no usable dataset_query (type={!r}); "
+                "clone_card only supports native and MBQL queries."
+                .format(card_id, query_type)
+            )
+
         # get the mappings, both name -> id and id -> name
         target_table_col_name_id_mapping = self.get_columns_name_id(
             table_id=target_table_id
@@ -254,7 +264,7 @@ class Metabase_API:
         )
 
         # native questions
-        if card_info["dataset_query"]["type"] == "native":
+        if query_type == "native":
             filters_data = card_info["dataset_query"]["native"]["template-tags"]
             # change the underlying table for the card
             if not source_table_name:
@@ -279,7 +289,7 @@ class Metabase_API:
                 ]["dimension"][1] = target_col_id
 
         # simple/custom questions
-        elif card_info["dataset_query"]["type"] == "query":
+        elif query_type == "query":
             query_data = card_info["dataset_query"]["query"]
 
             # change the underlying table for the card
