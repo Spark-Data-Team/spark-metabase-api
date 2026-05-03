@@ -480,14 +480,20 @@ def _execute_collection(client, spec: CollectionSpec, parent_id: Optional[int],
         return 0
 
     if action.op == "create":
-        new_id = client.create_collection(
+        new = client.create_collection(
             collection_name=spec.name,
             parent_collection_id=parent_id,
             parent_collection_name="Root" if parent_id is None else None,
             official=(spec.authority_level == "official"),
             return_results=True,
         )
-        collection_id = new_id["id"] if isinstance(new_id, dict) else new_id
+        collection_id = new["id"] if isinstance(new, dict) else new
+        if not collection_id:
+            raise RuntimeError(
+                "Failed to create collection {!r} under parent {}: aborting "
+                "the apply to avoid orphaning its children at the root."
+                .format(spec.name, parent_id)
+            )
         if spec.description:
             client.put("/api/collection/{}".format(collection_id),
                        json={"description": spec.description})
