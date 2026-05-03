@@ -19,6 +19,11 @@
 * Fix small bugs
 ## 0.1.13 (2024-10-29)
 * Add 2 functions *rescan_db_field_values* & *rescan_db_sync_schemas* to main
+## 0.3.0 (2026-05-03)
+### Added
+* New **chatbot** module `spark_metabase_api.chatbot`: Claude Opus 4.7 with tool-use that inspects a live Metabase instance and emits a `CollectionSpec` from a natural-language brief. Exposes `chat()` (blocking) and `stream()` (generator yielding `text` / `tool_call` / `tool_result` / `proposed` events for live UIs). `anthropic` is an optional extra (`pip install spark-metabase-api[chatbot]`).
+* New **Streamlit** frontend (`streamlit_app.py`): live chat UX with sidebar credentials, expandable tool-call results, spec review, and Apply button. Optional extra (`pip install spark-metabase-api[streamlit]`).
+* `iac` now resolves `card_name` forward references in dashcards at apply time, so a single spec run can both create cards and create a dashboard that references them by name.
 ## 0.2.0 (2026-05-03)
 ### Added
 * New **Infrastructure-as-Code** module `spark_metabase_api.iac`: declare a Metabase collection tree in YAML/JSON and apply it idempotently. Exposes `export`, `plan`, `apply` and a CLI: `spark-metabase {export,plan,apply}`. PyYAML is an optional extra (`pip install spark-metabase-api[iac]`).
