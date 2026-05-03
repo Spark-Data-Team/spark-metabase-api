@@ -151,6 +151,26 @@ The app:
 - renders the proposed spec as YAML,
 - previews the diff via `iac.plan` and applies it on demand.
 
+## Integration tests
+
+A standalone script exercises the package against a live Metabase instance,
+in four phases with a sandboxed write area that's archived on exit:
+
+```bash
+python tests/integration_test.py \
+    --domain "$MB_URL" --email "$MB_USER" --password "$MB_PASS" \
+    --collection "My Reports" \
+    --source-dashboard-id 42 \
+    --chatbot
+```
+
+Phase 1 is fully read-only. Phase 2 creates a uniquely-named throwaway
+collection, applies a tiny spec, exercises `add_card_to_dashboard` and
+`copy_dashboard(deepcopy=True)`, then archives the sandbox in a `finally`
+block (use `--keep-sandbox` to keep it around for manual inspection).
+Phase 3 (opt-in via `--chatbot`) runs the Claude agent but does *not*
+apply the spec it proposes.
+
 ## Acknowledgements
 
 - [Metabase API documentation](https://www.metabase.com/docs/latest/api-documentation)
