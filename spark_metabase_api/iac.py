@@ -343,14 +343,19 @@ def _significant_collection_diff(local: CollectionSpec, remote: Dict[str, Any]) 
     return diffs
 
 
-def plan(client, spec: CollectionSpec, parent_id: Optional[int] = None,
-         parent_path: str = "") -> Plan:
+def plan(client, spec: CollectionSpec, parent_id: Optional[int] = None) -> Plan:
     """Compute a plan to make Metabase match the spec.
 
-    The plan is read-only; pass it to `apply` to execute it.
+    The plan is read-only; pass the same arguments to `apply` to execute it.
+
+    Keyword arguments:
+    client -- a configured Metabase_API instance
+    spec -- the root CollectionSpec to apply
+    parent_id -- id of the Metabase collection that should host `spec`. None
+                 means the root collection.
     """
     p = Plan()
-    _plan_collection(client, spec, parent_id, parent_path, p)
+    _plan_collection(client, spec, parent_id, parent_path="", p=p)
     return p
 
 
@@ -452,20 +457,17 @@ def _plan_collection(client, spec: CollectionSpec, parent_id: Optional[int],
 
 
 def apply(client, spec: CollectionSpec, parent_id: Optional[int] = None,
-          parent_path: str = "", dry_run: bool = False) -> Plan:
-    """Apply the spec to Metabase, creating or updating items so the live state
-    matches. Returns the executed plan."""
-    p = plan(client, spec, parent_id=parent_id, parent_path=parent_path)
+          dry_run: bool = False) -> Plan:
+    """Apply the spec to Metabase so the live state matches the spec.
+
+    Returns the executed plan. With dry_run=True nothing is written and the
+    returned plan is exactly what `plan(client, spec, parent_id)` would return.
+    """
+    p = plan(client, spec, parent_id=parent_id)
     if dry_run:
         return p
-    return _execute(client, spec, p, parent_id, parent_path)
-
-
-def _execute(client, spec: CollectionSpec, p: Plan,
-             parent_id: Optional[int], parent_path: str) -> Plan:
-    # Index actions by path for quick lookup during the recursive walk.
     by_path = {a.path: a for a in p.actions}
-    _execute_collection(client, spec, parent_id, parent_path, by_path)
+    _execute_collection(client, spec, parent_id, parent_path="", by_path=by_path)
     return p
 
 
