@@ -322,15 +322,24 @@ def _significant_card_diff(local: CardSpec, remote: Dict[str, Any]) -> List[str]
     return diffs
 
 
-def _significant_dashboard_diff(local: DashboardSpec, remote: Dict[str, Any]) -> List[str]:
+def _significant_dashboard_diff(
+    local: DashboardSpec,
+    remote: Dict[str, Any],
+    resolved_dashcards: Optional[List[Dict[str, Any]]] = None,
+) -> List[str]:
     diffs = []
     if (local.description or None) != (remote.get("description") or None):
         diffs.append("description")
     if (local.parameters or []) != (remote.get("parameters") or []):
         diffs.append("parameters")
-    remote_dc = remote.get("dashcards") or remote.get("ordered_cards") or []
-    if (local.dashcards or []) != remote_dc:
+    if resolved_dashcards is None:
+        # Spec carries card_name forward references that can't be resolved
+        # yet (cards not created at plan time). Force an update.
         diffs.append("dashcards")
+    else:
+        remote_dc = remote.get("dashcards") or remote.get("ordered_cards") or []
+        if resolved_dashcards != remote_dc:
+            diffs.append("dashcards")
     return diffs
 
 
@@ -419,6 +428,15 @@ def _plan_collection(client, spec: CollectionSpec, parent_id: Optional[int],
             parent_path=path, p=p,
         )
 
+    # name_to_id for cards in this collection — also used to resolve
+    # card_name forward references in spec dashcards before we diff them
+    # against the live state (which carries card_id).
+    existing_name_to_id = {
+        name: item["id"]
+        for (kind, name), item in children.items()
+        if kind == "card"
+    }
+
     for d in spec.dashboards:
         match = children.get(("dashboard", d.name))
         d_path = _join(path, d.name)
@@ -426,7 +444,14 @@ def _plan_collection(client, spec: CollectionSpec, parent_id: Optional[int],
             p.actions.append(Action(op="create", kind="dashboard", path=d_path))
             continue
         remote = client.get("/api/dashboard/{}".format(match["id"])) or match
-        diffs = _significant_dashboard_diff(d, remote)
+        try:
+            resolved_dashcards = _resolve_card_names(d.dashcards, existing_name_to_id)
+        except ValueError:
+            # The spec references a card_name that doesn't exist yet (will be
+            # created in the same apply). Treat as needing an update; the
+            # executor will resolve it once the card is materialised.
+            resolved_dashcards = None
+        diffs = _significant_dashboard_diff(d, remote, resolved_dashcards)
         p.actions.append(Action(
             op="update" if diffs else "skip",
             kind="dashboard", path=d_path,
@@ -471,6 +496,34 @@ def apply(client, spec: CollectionSpec, parent_id: Optional[int] = None,
     return p
 
 
+def _resolve_card_names(dashcards: List[Dict[str, Any]],
+                        name_to_id: Dict[str, int]) -> List[Dict[str, Any]]:
+    """Replace `card_name` forward references in dashcards with `card_id`.
+
+    Dashcards that already have a `card_id` are left alone. A dashcard with
+    `card_name` set and no `card_id` is rewritten to point at the live id;
+    if the name doesn't match any card created or found in the same scope,
+    a ValueError is raised with the offending name.
+    """
+    out = []
+    for dc in dashcards or []:
+        if dc.get("card_name") and not dc.get("card_id"):
+            cid = name_to_id.get(dc["card_name"])
+            if cid is None:
+                raise ValueError(
+                    "Dashcard references card_name {!r}, but no card with "
+                    "that name was created or found in the same collection."
+                    .format(dc["card_name"])
+                )
+            resolved = dict(dc)
+            resolved["card_id"] = cid
+            resolved.pop("card_name")
+            out.append(resolved)
+        else:
+            out.append(dc)
+    return out
+
+
 def _execute_collection(client, spec: CollectionSpec, parent_id: Optional[int],
                         parent_path: str, by_path: Dict[str, Action]) -> int:
     path = _join(parent_path or "/", spec.name)
@@ -507,34 +560,15 @@ def _execute_collection(client, spec: CollectionSpec, parent_id: Optional[int],
     for child in spec.collections:
         _execute_collection(client, child, collection_id, path, by_path)
 
-    for d in spec.dashboards:
-        d_path = _join(path, d.name)
-        d_action = by_path.get(d_path)
-        if d_action is None:
-            continue
-        if d_action.op == "create":
-            payload = {
-                "name": d.name,
-                "description": d.description,
-                "collection_id": collection_id,
-                "parameters": d.parameters or [],
-            }
-            res = client.post("/api/dashboard/", json=payload)
-            if res and d.dashcards:
-                client.put(
-                    "/api/dashboard/{}".format(res["id"]),
-                    json={"dashcards": d.dashcards, "parameters": d.parameters or []},
-                )
-        elif d_action.op == "update" and d_action.existing_id is not None:
-            client.put(
-                "/api/dashboard/{}".format(d_action.existing_id),
-                json={
-                    "description": d.description,
-                    "parameters": d.parameters or [],
-                    "dashcards": d.dashcards,
-                },
-            )
+    # Track card names → ids in this collection so dashcards can reference
+    # cards by name. Pre-populate with cards that already exist (skip ops).
+    name_to_id: Dict[str, int] = {}
+    if collection_id and collection_id != "root":
+        for (kind, name), item in _index_collection_children(client, collection_id).items():
+            if kind == "card":
+                name_to_id[name] = item["id"]
 
+    # Cards must be processed before dashboards so name_to_id is populated.
     for c in spec.cards:
         c_path = _join(path, c.name)
         c_action = by_path.get(c_path)
@@ -547,11 +581,49 @@ def _execute_collection(client, spec: CollectionSpec, parent_id: Optional[int],
                 "collection_id": collection_id,
                 "description": c.description,
             })
-            client.create_card(custom_json=payload)
+            res = client.create_card(custom_json=payload, return_card=True)
+            if not isinstance(res, dict) or "id" not in res:
+                raise RuntimeError(
+                    "Failed to create card {!r} in collection {}: {}"
+                    .format(c.name, collection_id, res)
+                )
+            name_to_id[c.name] = res["id"]
         elif c_action.op == "update" and c_action.existing_id is not None:
             payload = dict(c.definition)
             payload["description"] = c.description
             client.put("/api/card/{}".format(c_action.existing_id), json=payload)
+            name_to_id[c.name] = c_action.existing_id
+        elif c_action.existing_id is not None:  # skip
+            name_to_id[c.name] = c_action.existing_id
+
+    for d in spec.dashboards:
+        d_path = _join(path, d.name)
+        d_action = by_path.get(d_path)
+        if d_action is None:
+            continue
+        dashcards = _resolve_card_names(d.dashcards, name_to_id)
+        if d_action.op == "create":
+            payload = {
+                "name": d.name,
+                "description": d.description,
+                "collection_id": collection_id,
+                "parameters": d.parameters or [],
+            }
+            res = client.post("/api/dashboard/", json=payload)
+            if res and dashcards:
+                client.put(
+                    "/api/dashboard/{}".format(res["id"]),
+                    json={"dashcards": dashcards, "parameters": d.parameters or []},
+                )
+        elif d_action.op == "update" and d_action.existing_id is not None:
+            client.put(
+                "/api/dashboard/{}".format(d_action.existing_id),
+                json={
+                    "description": d.description,
+                    "parameters": d.parameters or [],
+                    "dashcards": dashcards,
+                },
+            )
 
     return collection_id or 0
 
