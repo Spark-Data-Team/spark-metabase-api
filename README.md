@@ -99,22 +99,77 @@ A dashcard can reference a card created by the same spec via
 the cards present (or just created) inside the same collection and rewrites
 the dashcard with the real id.
 
+## Natural-language dashboard authoring
+
+```bash
+pip install "spark-metabase-api[chatbot]"
+```
+
+Describe what you want; Claude inspects the live Metabase via read-only tools
+(`list_databases`, `list_tables`, `describe_table`, `search_metabase`,
+`find_cards_using_table`) and emits a `CollectionSpec`:
+
+```python
+from spark_metabase_api import Metabase_API, iac
+from spark_metabase_api.chatbot import chat
+
+mb = Metabase_API(domain=..., session_id=...)
+spec = chat(mb, "Build an Acme dashboard with monthly revenue and top accounts")
+print(iac.plan(mb, spec).render())
+iac.apply(mb, spec)
+```
+
+For UIs (Streamlit, Slack, etc.) use the streaming generator:
+
+```python
+from spark_metabase_api.chatbot import stream
+
+for event_type, payload in stream(mb, "..."):
+    if event_type == "text":          render_assistant_text(payload)
+    elif event_type == "tool_call":   render_tool_call(payload)      # {name, input}
+    elif event_type == "tool_result": render_tool_result(payload)    # {name, input, result}
+    elif event_type == "proposed":    save_spec(payload)             # CollectionSpec dict
+```
+
+Powered by Claude Opus 4.7 with adaptive thinking; the model needs an
+`ANTHROPIC_API_KEY` environment variable.
+
+### Streamlit frontend
+
+A single-file Streamlit app that wires the chatbot to a chat UI with live
+tool-call rendering, plan diffing, and an Apply button.
+
+```bash
+pip install "spark-metabase-api[streamlit]"
+streamlit run streamlit_app.py
+```
+
+The app:
+- collects Metabase + Anthropic credentials in the sidebar,
+- streams Claude's progress (text, tool calls, expandable tool results) as
+  the agent works,
+- renders the proposed spec as YAML,
+- previews the diff via `iac.plan` and applies it on demand.
+
 ## Integration tests
 
 A standalone script exercises the package against a live Metabase instance,
-in three phases with a sandboxed write area that's archived on exit:
+in four phases with a sandboxed write area that's archived on exit:
 
 ```bash
 python tests/integration_test.py \
     --domain "$MB_URL" --email "$MB_USER" --password "$MB_PASS" \
     --collection "My Reports" \
-    --source-dashboard-id 42
+    --source-dashboard-id 42 \
+    --chatbot
 ```
 
 Phase 1 is fully read-only. Phase 2 creates a uniquely-named throwaway
 collection, applies a tiny spec, exercises `add_card_to_dashboard` and
 `copy_dashboard(deepcopy=True)`, then archives the sandbox in a `finally`
 block (use `--keep-sandbox` to keep it around for manual inspection).
+Phase 3 (opt-in via `--chatbot`) runs the Claude agent but does *not*
+apply the spec it proposes.
 
 ## Acknowledgements
 
