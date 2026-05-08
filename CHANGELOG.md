@@ -39,3 +39,10 @@
 * Forward references in dashcards: a dashcard can reference a card created by the same spec via `card_name: "<name>"`; the applier resolves it to a `card_id` at apply time.
 * Integration test script `tests/integration_test.py` with read-only / sandbox / cleanup phases.
 * README rewritten with a worked IaC example.
+## 0.3.0 (2026-05-08)
+### Added
+* New **chatbot** module `spark_metabase_api.chatbot`: Claude Opus 4.7 with tool-use that inspects a live Metabase instance and emits a `CollectionSpec` from a natural-language brief. Exposes `chat()` (blocking) and `stream()` (generator yielding `text` / `tool_call` / `tool_result` / `proposed` events for live UIs). `anthropic` is an optional extra (`pip install spark-metabase-api[chatbot]`).
+* New **Streamlit** frontend (`streamlit_app.py`): live chat UX with sidebar credentials, expandable tool-call results, spec review, and Apply button. Optional extra (`pip install spark-metabase-api[streamlit]`).
+* `tests/integration_test.py` gains an optional Phase 3 (`--chatbot`) that runs the agent end-to-end without applying the spec.
+### Fixed
+* `chatbot.stream` passes `cache_control` on the system block (per Anthropic SDK docs) instead of as a top-level kwarg to `tool_runner` (where it was silently ignored — no cache hit, larger bills).

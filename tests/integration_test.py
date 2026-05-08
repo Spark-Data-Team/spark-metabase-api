@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Integration tests for spark-metabase-api against a live Metabase instance.
 
-The script runs in 3 phases, each with a clear safety boundary:
+The script runs in 4 phases, each with a clear safety boundary:
 
     Phase 1  read-only checks   (auth, search, iac.export idempotency)
     Phase 2  sandbox writes     (creates a throwaway collection, applies a
                                  mini-spec, exercises add_card_to_dashboard
                                  and copy_dashboard's deepcopy path)
-    Phase 3  cleanup            (archive the sandbox; runs even on failure)
+    Phase 3  optional chatbot   (Claude proposes a spec — NOT applied)
+    Phase 4  cleanup            (archive the sandbox; runs even on failure)
 
 The sandbox is archived in a finally block so a crash mid-test doesn't leave
 junk behind. Pass --keep-sandbox to keep it around for manual inspection.
@@ -30,6 +31,9 @@ Usage:
     # copy_dashboard is exercised if you pass an existing dashboard id (the
     # original is read-only; a deep copy is made inside the sandbox):
     python tests/integration_test.py ... --source-dashboard-id 42
+
+    # Opt in to the chatbot phase (requires ANTHROPIC_API_KEY in env):
+    python tests/integration_test.py ... --chatbot
 
 Exit code is 0 on success, 1 on any failed assertion.
 """
@@ -259,11 +263,42 @@ def phase2_sandbox(
 
 
 # ---------------------------------------------------------------------------
-# Phase 3 — cleanup
+# Phase 3 — optional chatbot
+# ---------------------------------------------------------------------------
+
+def phase3_chatbot(mb: Metabase_API) -> None:
+    _step("Phase 3: chatbot end-to-end (read-only)")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        _skip("ANTHROPIC_API_KEY is not set")
+        return
+    try:
+        from spark_metabase_api.chatbot import chat
+    except ImportError:
+        _skip("anthropic not installed (pip install spark-metabase-api[chatbot])")
+        return
+
+    print("  ... running the agent (~30-90s, ~$0.50 in API tokens)")
+    spec = chat(
+        mb,
+        "Build the smallest possible test spec: one collection named "
+        "'chatbot smoke test', containing a single card whose native SQL "
+        "query is exactly 'SELECT 1 AS one'. Pick database id 1 if it "
+        "exists, otherwise the first database returned by list_databases. "
+        "Do NOT explore tables — keep the query as 'SELECT 1 AS one'.",
+        verbose=False,
+    )
+    assert spec.name, "chatbot returned a spec with no name"
+    assert spec.cards or spec.dashboards, "chatbot returned an empty spec"
+    _ok("chatbot proposed: {!r} ({} cards, {} dashboards) — NOT applied"
+        .format(spec.name, len(spec.cards), len(spec.dashboards)))
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — cleanup
 # ---------------------------------------------------------------------------
 
 def cleanup(mb: Metabase_API, sandbox_id: int, keep: bool) -> None:
-    _step("Phase 3: cleanup")
+    _step("Phase 4: cleanup")
     if keep:
         _skip("--keep-sandbox set; sandbox #{} left behind".format(sandbox_id))
         return
@@ -299,6 +334,10 @@ def main() -> int:
              "The original is read-only.",
     )
     parser.add_argument(
+        "--chatbot", action="store_true",
+        help="Also run the chatbot end-to-end (does NOT apply the spec)",
+    )
+    parser.add_argument(
         "--keep-sandbox", action="store_true",
         help="Don't archive the sandbox collection at the end",
     )
@@ -317,6 +356,8 @@ def main() -> int:
     try:
         phase1_readonly(mb, args.collection)
         sandbox_id = phase2_sandbox(mb, args.source_dashboard_id)
+        if args.chatbot:
+            phase3_chatbot(mb)
     except AssertionError as exc:
         _fail(str(exc))
         failed_with = exc
