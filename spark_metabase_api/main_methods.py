@@ -125,13 +125,19 @@ class Metabase_API:
         ]
         assert archived in [True, False]
 
-        res = self.get(endpoint="/api/search/", params={"q": q, "archived": archived})
-        if (
-            type(res) == dict
-        ):  # in Metabase version *.40.0 the format of the returned result for this endpoint changed
-            res = res["data"]
+        # Metabase 0.50+ rejects Python's capitalized 'False'/'True' bool URL
+        # serialization with a 400 'should be a boolean, received: "False"'.
+        # Send the explicit lowercase string instead.
+        res = self.get(
+            endpoint="/api/search/",
+            params={"q": q, "archived": str(archived).lower()},
+        )
+        if not res:
+            return []
+        if type(res) == dict:  # paginated shape introduced in *.40.0
+            res = res.get("data") or []
         if item_type is not None:
-            res = [item for item in res if item["model"] == item_type]
+            res = [item for item in res if item.get("model") == item_type]
 
         return res
 
