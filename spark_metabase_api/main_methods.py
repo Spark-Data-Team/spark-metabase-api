@@ -1,9 +1,37 @@
 import json
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 DEFAULT_TIMEOUT = 30
+
+
+def _build_http_session() -> requests.Session:
+    """Session with retry on transient errors (idempotent verbs only).
+
+    Long-running exports against large Metabase instances frequently hit
+    'Remote end closed connection without response' as the proxy reaps
+    keep-alive sockets. urllib3.Retry handles this transparently: connection
+    errors and 5xx are retried with exponential backoff. POST is left
+    single-shot to avoid duplicate writes.
+    """
+    s = requests.Session()
+    retry = Retry(
+        total=3,
+        connect=3,
+        read=3,
+        status=2,
+        backoff_factor=0.5,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset(("GET", "PUT", "DELETE")),
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
+    return s
 
 
 class Metabase_API:
@@ -16,7 +44,7 @@ class Metabase_API:
         self.auth = (self.email, self.password) if basic_auth else None
         self.is_admin = is_admin
         self.session_expiry = None
-        self._http = requests.Session()
+        self._http = _build_http_session()
 
         if not (self.email and self.password) and not self.session_id:
             raise ValueError("You must provide either email/password or a valid session ID.")

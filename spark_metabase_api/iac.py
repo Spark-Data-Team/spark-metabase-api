@@ -254,15 +254,60 @@ def _export_card(client, card_id: int) -> CardSpec:
     )
 
 
+# Fields kept in the persisted dashcard. 'id' is preserved so that on
+# re-apply of a previously-exported spec, Metabase maps each dashcard back to
+# the same row (no churn). Anything else returned by the server (notably the
+# embedded 'card' object full of view_count / cache_invalidated_at /
+# last_used_at) is dropped — keeping it would break export → plan idempotency.
+_DASHCARD_PERSIST_KEYS = (
+    "id", "card_id",
+    "row", "col", "size_x", "size_y",
+    "parameter_mappings", "visualization_settings",
+    "series", "action_id", "dashboard_tab_id",
+    "entity_id",
+)
+
+# Fields compared during diff. 'id' is intentionally excluded: a fresh spec
+# uses 'id: -1' to signal "create me", but post-apply the remote has a real
+# positive id assigned by Metabase. Excluding it makes plan-after-apply a
+# clean skip without forcing the user to re-export.
+_DASHCARD_DIFF_KEYS = tuple(k for k in _DASHCARD_PERSIST_KEYS if k != "id")
+
+
+def _normalize_dashcard(dc: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist-time normalize: keep only canonical, non-server-derived fields."""
+    return {k: dc[k] for k in _DASHCARD_PERSIST_KEYS if k in dc}
+
+
+def _normalize_dashcard_for_diff(dc: Dict[str, Any]) -> Dict[str, Any]:
+    """Diff-time normalize.
+
+    - Drops 'id' so id=-1 (fresh spec) matches a real id (post-apply remote).
+    - Drops 'entity_id' (Metabase generates it on create — not user-meaningful).
+    - Treats missing keys as default values so a hand-written dashcard that
+      omits 'series', 'action_id', 'dashboard_tab_id' compares equal to its
+      post-apply remote where Metabase has auto-filled those.
+    """
+    out = {k: dc.get(k) for k in _DASHCARD_DIFF_KEYS}
+    out.pop("entity_id", None)
+    if out.get("parameter_mappings") is None:
+        out["parameter_mappings"] = []
+    if out.get("visualization_settings") is None:
+        out["visualization_settings"] = {}
+    if out.get("series") is None:
+        out["series"] = []
+    return out
+
+
 def _export_dashboard(client, dashboard_id: int) -> DashboardSpec:
     info = client.get("/api/dashboard/{}".format(dashboard_id)) or {}
-    dashcards = info.get("dashcards") or info.get("ordered_cards") or []
+    raw_dashcards = info.get("dashcards") or info.get("ordered_cards") or []
     return DashboardSpec(
         name=info.get("name") or "",
         description=info.get("description"),
         entity_id=info.get("entity_id"),
         parameters=info.get("parameters") or [],
-        dashcards=dashcards,
+        dashcards=[_normalize_dashcard(dc) for dc in raw_dashcards],
     )
 
 
@@ -345,8 +390,13 @@ def _significant_dashboard_diff(
         # yet (cards not created at plan time). Force an update.
         diffs.append("dashcards")
     else:
-        remote_dc = remote.get("dashcards") or remote.get("ordered_cards") or []
-        if resolved_dashcards != remote_dc:
+        # Normalize both sides — strip server-derived fields like the embedded
+        # 'card' object that changes between calls, plus 'id' so a fresh spec
+        # with id=-1 matches its post-apply remote with a real id.
+        remote_raw = remote.get("dashcards") or remote.get("ordered_cards") or []
+        remote_norm = [_normalize_dashcard_for_diff(dc) for dc in remote_raw]
+        local_norm = [_normalize_dashcard_for_diff(dc) for dc in resolved_dashcards]
+        if local_norm != remote_norm:
             diffs.append("dashcards")
     return diffs
 
