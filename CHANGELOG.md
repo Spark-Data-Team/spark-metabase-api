@@ -33,3 +33,9 @@
 * `create_collection`: `color` is sent for older Metabase but transparently dropped on a 400 from newer Metabase
 * Hardened `_rest_methods`: shared `requests.Session`, default 30s timeout (override via `timeout=None`), network errors during session validation no longer raise
 * `validate_session` and `is_session_valid` deduplicated
+## 0.2.0 (2026-05-08)
+### Added
+* New **Infrastructure-as-Code** module `spark_metabase_api.iac`: declare a Metabase collection tree in YAML/JSON and apply it idempotently with a Terraform-style diff. Exposes `export`, `plan`, `apply` and a CLI: `spark-metabase {export,plan,apply}`. PyYAML is an optional extra (`pip install spark-metabase-api[iac]`).
+* Forward references in dashcards: a dashcard can reference a card created by the same spec via `card_name: "<name>"`; the applier resolves it to a `card_id` at apply time.
+* Integration test script `tests/integration_test.py` with read-only / sandbox / cleanup phases.
+* README rewritten with a worked IaC example.
