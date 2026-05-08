@@ -64,19 +64,19 @@ def get_item_name(self, item_type, item_id):
 
 
 def check_collection(self, collection_name=None, parent_collection_id=None):
-    
+
     collection_IDs = [
-        i["id"] for i in self.get("/api/collection/") 
+        i["id"] for i in self.get("/api/collection/")
         if ("location" in i) and (i["name"] == collection_name) and (str(parent_collection_id) in i["location"])
     ]
 
     if len(collection_IDs) > 1:
         raise ValueError(
-            'There is more than one collection with the name "{}"'.format(item_name)
+            'There is more than one collection with the name "{}"'.format(collection_name)
         )
     elif len(collection_IDs) == 0:
         return None
-    
+
     else:
         return collection_IDs[0]
 
@@ -490,8 +490,8 @@ def get_dashboard_question_ids(
     dashboard_name=None
 ):
     """
-    Return a dictionary with col_name key and col_id value, for the given table_id/table_name in the given db_id/db_name.
-    If column_id_name is True, return a dictionary with col_id key and col_name value.
+    Return the list of card ids referenced by the given dashboard.
+    Accepts either the dashboard id or its name.
     """
 
     if not dashboard_id:
@@ -502,10 +502,15 @@ def get_dashboard_question_ids(
                                     item_type='dashboard',
                                     item_name=dashboard_name
             )
-    
+
     dashboard = self.get('/api/dashboard/{}'.format(dashboard_id))
 
-    return [card["card_id"] for card in dashboard["dashcards"] if card["card_id"] is not None]
+    # Metabase used 'ordered_cards' before ~0.48, then 'dashcards'. Support both.
+    cards = dashboard.get("dashcards")
+    if cards is None:
+        cards = dashboard.get("ordered_cards", [])
+
+    return [card["card_id"] for card in cards if card.get("card_id") is not None]
 
 def find_cards_via_db_object(
             self, 
