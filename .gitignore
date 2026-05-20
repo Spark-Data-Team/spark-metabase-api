@@ -111,3 +111,10 @@ dmypy.json
 
 # Specific files to ignore
 /test_script.py
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Migration Phase 1 — artefacts runtime (régénérables)
+migration/snapshot-*.json
+migration/families.json
