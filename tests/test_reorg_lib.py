@@ -10,7 +10,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from reorg_lib import CollectionNode, CardRef, MetabaseState
+from reorg_lib import (CollectionNode, CardRef, MetabaseState,
+                       load_plan, FamilySpec, CollectionMove)
 
 
 def test_metabase_state_roundtrip():
@@ -29,7 +30,33 @@ def test_metabase_state_roundtrip():
     assert restored.cards[29].dashboard_count == 1211
 
 
-TESTS = [test_metabase_state_roundtrip]
+def test_load_plan():
+    with tempfile.TemporaryDirectory() as d:
+        plan_file = Path(d) / "plan.yaml"
+        plan_file.write_text(textwrap.dedent("""
+            families:
+              - key: ad_platforms
+                name: "Ad platforms"
+                description: "Plateformes publicitaires"
+            collection_moves:
+              - id: 209
+                new_parent: ad_platforms
+                new_name: "Google Ads"
+            card_filing:
+              46255: 217
+            delete_empty:
+              - 211
+        """))
+        plan = load_plan(plan_file)
+    assert plan.families == [FamilySpec(key="ad_platforms", name="Ad platforms",
+                                        description="Plateformes publicitaires")]
+    assert plan.collection_moves == [CollectionMove(id=209, new_parent="ad_platforms",
+                                                    new_name="Google Ads")]
+    assert plan.card_filing == {46255: 217}
+    assert plan.delete_empty == [211]
+
+
+TESTS = [test_metabase_state_roundtrip, test_load_plan]
 
 
 def run():
