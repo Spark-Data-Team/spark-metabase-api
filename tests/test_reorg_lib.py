@@ -12,7 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from reorg_lib import (CollectionNode, CardRef, MetabaseState,
                        load_plan, FamilySpec, CollectionMove,
-                       verify_invariant)
+                       verify_invariant, compute_lots, Phase1Plan,
+                       TO_SORT_COLLECTION_ID)
 
 
 def test_metabase_state_roundtrip():
@@ -90,11 +91,38 @@ def test_verify_invariant_detects_dashboard_count_change():
     assert [d.kind for d in divs] == ["dashboard_count_changed"]
 
 
+def test_compute_lots_groups_operations():
+    state = MetabaseState(
+        collections={
+            209: CollectionNode(209, "02. Google", 215),
+            211: CollectionNode(211, "04. Microsoft", 215),
+        },
+        cards={
+            46255: CardRef(46255, "Loose card", 214, 0, False),
+            777: CardRef(777, "To-sort card", TO_SORT_COLLECTION_ID, 3, False),
+        },
+    )
+    plan = Phase1Plan(
+        families=[FamilySpec("ad_platforms", "Ad platforms")],
+        collection_moves=[CollectionMove(209, "ad_platforms", "Google Ads")],
+        card_filing={46255: 217, 777: 218},
+        delete_empty=[211],
+    )
+    lots = compute_lots(state, plan)
+    assert [op.kind for op in lots["lot-1"]] == ["create_collection"]
+    assert [op.kind for op in lots["lot-2"]] == ["move_collection"]
+    assert lots["lot-2"][0].payload["new_parent_key"] == "ad_platforms"
+    assert [op.payload["card_id"] for op in lots["lot-3"]] == [46255]
+    assert [op.payload["card_id"] for op in lots["lot-4"]] == [777]
+    assert [op.payload["collection_id"] for op in lots["lot-5"]] == [211]
+
+
 TESTS = [test_metabase_state_roundtrip, test_load_plan,
          test_verify_invariant_clean_when_only_moved,
          test_verify_invariant_detects_lost_card,
          test_verify_invariant_detects_archived_card,
-         test_verify_invariant_detects_dashboard_count_change]
+         test_verify_invariant_detects_dashboard_count_change,
+         test_compute_lots_groups_operations]
 
 
 def run():

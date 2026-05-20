@@ -127,3 +127,52 @@ def verify_invariant(baseline: MetabaseState,
                 f"{base.name!r}: dashboard_count "
                 f"{base.dashboard_count} -> {cur.dashboard_count}"))
     return out
+
+
+@dataclass(frozen=True)
+class Op:
+    lot: str
+    kind: str        # create_collection|move_collection|move_card|delete_collection
+    summary: str
+    payload: dict
+
+
+def compute_lots(state: MetabaseState, plan: Phase1Plan) -> dict[str, list[Op]]:
+    lots: dict[str, list[Op]] = {f"lot-{i}": [] for i in range(1, 6)}
+
+    for fam in plan.families:
+        lots["lot-1"].append(Op(
+            "lot-1", "create_collection",
+            f"Créer la famille « {fam.name} »",
+            {"key": fam.key, "name": fam.name, "description": fam.description}))
+
+    for mv in plan.collection_moves:
+        old = state.collections.get(mv.id)
+        old_name = old.name if old else f"#{mv.id}"
+        lots["lot-2"].append(Op(
+            "lot-2", "move_collection",
+            f"Déplacer « {old_name} » -> famille « {mv.new_parent} », "
+            f"renommer en « {mv.new_name} »",
+            {"collection_id": mv.id, "new_parent_key": mv.new_parent,
+             "new_name": mv.new_name}))
+
+    for card_id, dest in plan.card_filing.items():
+        card = state.cards.get(card_id)
+        if card is None:
+            raise ValueError(f"card_filing référence une carte inconnue: {card_id}")
+        lot = "lot-4" if card.collection_id == TO_SORT_COLLECTION_ID else "lot-3"
+        lots[lot].append(Op(
+            lot, "move_card",
+            f"Déplacer la carte « {card.name} » (#{card_id}) "
+            f"de la collection {card.collection_id} vers {dest}",
+            {"card_id": card_id, "collection_id": dest}))
+
+    for coll_id in plan.delete_empty:
+        old = state.collections.get(coll_id)
+        old_name = old.name if old else f"#{coll_id}"
+        lots["lot-5"].append(Op(
+            "lot-5", "delete_collection",
+            f"Supprimer la collection vide « {old_name} »",
+            {"collection_id": coll_id}))
+
+    return lots
