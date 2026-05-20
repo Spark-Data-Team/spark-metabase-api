@@ -19,7 +19,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from spark_metabase_api import Metabase_API  # noqa: E402
 from reorg_lib import (capture_state, ROOT_COLLECTION_ID,  # noqa: E402
-                       load_plan, compute_lots, MetabaseState)
+                       load_plan, compute_lots, MetabaseState,
+                       verify_invariant)
 
 MIGRATION_DIR = REPO_ROOT / "migration"
 
@@ -83,8 +84,100 @@ def cmd_plan(args):
     print(f"\nTotal : {total} opérations. (DRY-RUN — rien n'a été modifié.)")
 
 
+FAMILIES_FILE_NAME = "families.json"
+
+
+def _families_path():
+    return MIGRATION_DIR / FAMILIES_FILE_NAME
+
+
+def _check(status, what):
+    """`mb.put` renvoie un code HTTP — on échoue fort si non-2xx."""
+    if not (200 <= int(status) < 300):
+        raise RuntimeError(f"{what} a échoué — HTTP {status}")
+
+
+def _exec_op(mb, op, family_ids):
+    if op.kind == "create_collection":
+        coll = mb.create_collection(
+            collection_name=op.payload["name"],
+            parent_collection_id=ROOT_COLLECTION_ID,
+            return_results=True)
+        if not coll:
+            raise RuntimeError(f"Échec création collection {op.payload['name']!r}")
+        desc = op.payload.get("description", "")
+        if desc:
+            _check(mb.put(f"/api/collection/{coll['id']}",
+                          json={"description": desc}), "MAJ description")
+        family_ids[op.payload["key"]] = coll["id"]
+        print(f"  créée : {op.payload['name']} (id {coll['id']})")
+    elif op.kind == "move_collection":
+        parent = family_ids[op.payload["new_parent_key"]]
+        _check(mb.put(f"/api/collection/{op.payload['collection_id']}",
+                      json={"parent_id": parent, "name": op.payload["new_name"]}),
+               f"déplacement collection {op.payload['collection_id']}")
+        print(f"  déplacée : collection {op.payload['collection_id']} "
+              f"-> parent {parent}")
+    elif op.kind == "move_card":
+        _check(mb.put(f"/api/card/{op.payload['card_id']}",
+                      json={"collection_id": op.payload["collection_id"]}),
+               f"déplacement carte {op.payload['card_id']}")
+        print(f"  carte {op.payload['card_id']} -> "
+              f"collection {op.payload['collection_id']}")
+    elif op.kind == "delete_collection":
+        cid = op.payload["collection_id"]
+        resp = mb.get(f"/api/collection/{cid}/items?limit=10")
+        if resp is False:
+            raise RuntimeError(f"impossible de lister la collection {cid}")
+        items = resp.get("data", [])
+        if items:
+            print(f"  IGNORÉE : collection {cid} non vide "
+                  f"({len(items)} éléments) — suppression annulée")
+            return
+        _check(mb.put(f"/api/collection/{cid}", json={"archived": True}),
+               f"archivage collection {cid}")
+        print(f"  collection {cid} archivée (vide)")
+    else:
+        raise ValueError(f"opération inconnue : {op.kind}")
+
+
 def cmd_apply(args):
-    raise NotImplementedError
+    baseline = MetabaseState.from_dict(json.loads(Path(args.snapshot).read_text()))
+    plan = load_plan(args.plan)
+    lots = compute_lots(baseline, plan)
+    ops = lots[args.lot]
+    if not ops:
+        print(f"{args.lot} : aucune opération.")
+        return
+
+    print(f"\n=== {args.lot} : {len(ops)} opérations ===")
+    for op in ops:
+        print(f"  - {op.summary}")
+    if not args.yes:
+        if input(f"\nAppliquer {args.lot} ? [tape 'oui'] ").strip() != "oui":
+            sys.exit("Annulé.")
+
+    mb = connect()
+    family_ids = {}
+    if _families_path().exists():
+        family_ids = json.loads(_families_path().read_text())
+
+    for op in ops:
+        _exec_op(mb, op, family_ids)
+
+    if args.lot == "lot-1":
+        _families_path().write_text(json.dumps(family_ids, indent=2))
+        print(f"Familles enregistrées : {_families_path()}")
+
+    print("\nVérification d'invariant post-lot...")
+    current = capture_state(mb.get, root_id=ROOT_COLLECTION_ID)
+    divergences = verify_invariant(baseline, current)
+    if divergences:
+        print("DIVERGENCES DÉTECTÉES — ARRÊT :")
+        for d in divergences:
+            print(f"  [{d.kind}] carte {d.card_id} : {d.detail}")
+        sys.exit(1)
+    print(f"OK — {len(current.cards)} cartes intactes, 0 divergence.")
 
 
 def cmd_verify(args):
