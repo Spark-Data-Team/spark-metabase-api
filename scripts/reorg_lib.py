@@ -96,3 +96,34 @@ def load_plan(path) -> Phase1Plan:
     delete_empty = [int(x) for x in data.get("delete_empty", [])]
     return Phase1Plan(families=families, collection_moves=moves,
                       card_filing=card_filing, delete_empty=delete_empty)
+
+
+@dataclass(frozen=True)
+class Divergence:
+    kind: str        # "lost_card" | "archived_card" | "dashboard_count_changed"
+    card_id: int
+    detail: str
+
+
+def verify_invariant(baseline: MetabaseState,
+                     current: MetabaseState) -> list[Divergence]:
+    """Retourne les divergences interdites entre l'état baseline et l'état courant.
+
+    Un changement de `collection_id` (déplacement) n'est PAS une divergence.
+    """
+    out: list[Divergence] = []
+    for cid, base in baseline.cards.items():
+        cur = current.cards.get(cid)
+        if cur is None:
+            out.append(Divergence("lost_card", cid,
+                                   f"{base.name!r} absente de l'état courant"))
+            continue
+        if cur.archived and not base.archived:
+            out.append(Divergence("archived_card", cid,
+                                   f"{base.name!r} a été archivée"))
+        if cur.dashboard_count != base.dashboard_count:
+            out.append(Divergence(
+                "dashboard_count_changed", cid,
+                f"{base.name!r}: dashboard_count "
+                f"{base.dashboard_count} -> {cur.dashboard_count}"))
+    return out

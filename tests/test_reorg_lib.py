@@ -11,7 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 from reorg_lib import (CollectionNode, CardRef, MetabaseState,
-                       load_plan, FamilySpec, CollectionMove)
+                       load_plan, FamilySpec, CollectionMove,
+                       verify_invariant)
 
 
 def test_metabase_state_roundtrip():
@@ -56,7 +57,44 @@ def test_load_plan():
     assert plan.delete_empty == [211]
 
 
-TESTS = [test_metabase_state_roundtrip, test_load_plan]
+def _state(cards):
+    return MetabaseState(collections={}, cards={c.id: c for c in cards})
+
+
+def test_verify_invariant_clean_when_only_moved():
+    base = _state([CardRef(29, "CAC", 214, 1211, False)])
+    # même carte, collection différente -> déplacement légitime, pas de divergence
+    current = _state([CardRef(29, "CAC", 999, 1211, False)])
+    assert verify_invariant(base, current) == []
+
+
+def test_verify_invariant_detects_lost_card():
+    base = _state([CardRef(29, "CAC", 214, 1211, False)])
+    current = _state([])
+    divs = verify_invariant(base, current)
+    assert [d.kind for d in divs] == ["lost_card"]
+    assert divs[0].card_id == 29
+
+
+def test_verify_invariant_detects_archived_card():
+    base = _state([CardRef(29, "CAC", 214, 1211, False)])
+    current = _state([CardRef(29, "CAC", 214, 1211, True)])
+    divs = verify_invariant(base, current)
+    assert [d.kind for d in divs] == ["archived_card"]
+
+
+def test_verify_invariant_detects_dashboard_count_change():
+    base = _state([CardRef(29, "CAC", 214, 1211, False)])
+    current = _state([CardRef(29, "CAC", 214, 1210, False)])
+    divs = verify_invariant(base, current)
+    assert [d.kind for d in divs] == ["dashboard_count_changed"]
+
+
+TESTS = [test_metabase_state_roundtrip, test_load_plan,
+         test_verify_invariant_clean_when_only_moved,
+         test_verify_invariant_detects_lost_card,
+         test_verify_invariant_detects_archived_card,
+         test_verify_invariant_detects_dashboard_count_change]
 
 
 def run():
