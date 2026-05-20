@@ -181,11 +181,49 @@ def cmd_apply(args):
 
 
 def cmd_verify(args):
-    raise NotImplementedError
+    baseline = MetabaseState.from_dict(json.loads(Path(args.snapshot).read_text()))
+    mb = connect()
+    current = capture_state(mb.get, root_id=ROOT_COLLECTION_ID)
+    divergences = verify_invariant(baseline, current)
+    if divergences:
+        print(f"{len(divergences)} divergence(s) :")
+        for d in divergences:
+            print(f"  [{d.kind}] carte {d.card_id} : {d.detail}")
+        sys.exit(1)
+    print(f"OK — {len(current.cards)} cartes, 0 divergence vs snapshot.")
 
 
 def cmd_rollback(args):
-    raise NotImplementedError
+    baseline = MetabaseState.from_dict(json.loads(Path(args.snapshot).read_text()))
+    if not args.yes:
+        if input("Restaurer toutes les positions du snapshot ? [tape 'oui'] "
+                 ).strip() != "oui":
+            sys.exit("Annulé.")
+    mb = connect()
+    current = capture_state(mb.get, root_id=ROOT_COLLECTION_ID)
+
+    # Restaurer collection_id de chaque carte déplacée.
+    for cid, base in baseline.cards.items():
+        cur = current.cards.get(cid)
+        if cur and cur.collection_id != base.collection_id:
+            _check(mb.put(f"/api/card/{cid}",
+                          json={"collection_id": base.collection_id}),
+                   f"restauration carte {cid}")
+            print(f"  carte {cid} restaurée -> collection {base.collection_id}")
+
+    # Restaurer parent_id de chaque collection déplacée (présente dans le snapshot).
+    for coll_id, base in baseline.collections.items():
+        if coll_id == ROOT_COLLECTION_ID:
+            continue
+        cur = current.collections.get(coll_id)
+        if cur and cur.parent_id != base.parent_id:
+            _check(mb.put(f"/api/collection/{coll_id}",
+                          json={"parent_id": base.parent_id, "name": base.name}),
+                   f"restauration collection {coll_id}")
+            print(f"  collection {coll_id} restaurée -> parent {base.parent_id}")
+
+    print("Rollback terminé. Les familles créées (absentes du snapshot) "
+          "sont à archiver manuellement si besoin.")
 
 
 def main(argv=None):
