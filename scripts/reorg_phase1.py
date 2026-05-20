@@ -18,7 +18,8 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 sys.path.insert(0, str(REPO_ROOT))
 
 from spark_metabase_api import Metabase_API  # noqa: E402
-from reorg_lib import capture_state, ROOT_COLLECTION_ID  # noqa: E402
+from reorg_lib import (capture_state, ROOT_COLLECTION_ID,  # noqa: E402
+                       load_plan, compute_lots, MetabaseState)
 
 MIGRATION_DIR = REPO_ROOT / "migration"
 
@@ -69,7 +70,17 @@ def cmd_snapshot(args):
 
 
 def cmd_plan(args):
-    raise NotImplementedError
+    state = MetabaseState.from_dict(json.loads(Path(args.snapshot).read_text()))
+    plan = load_plan(args.plan)
+    lots = compute_lots(state, plan)
+    total = 0
+    for lot_name in (f"lot-{i}" for i in range(1, 6)):
+        ops = lots[lot_name]
+        print(f"\n=== {lot_name} ({len(ops)} opérations) ===")
+        for op in ops:
+            print(f"  - {op.summary}")
+        total += len(ops)
+    print(f"\nTotal : {total} opérations. (DRY-RUN — rien n'a été modifié.)")
 
 
 def cmd_apply(args):
