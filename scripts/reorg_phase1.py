@@ -112,7 +112,8 @@ def _exec_op(mb, op, family_ids):
         family_ids[op.payload["key"]] = coll["id"]
         print(f"  créée : {op.payload['name']} (id {coll['id']})")
     elif op.kind == "move_collection":
-        parent = family_ids[op.payload["new_parent_key"]]
+        key = op.payload["new_parent_key"]
+        parent = ROOT_COLLECTION_ID if key == "root" else family_ids[key]
         _check(mb.put(f"/api/collection/{op.payload['collection_id']}",
                       json={"parent_id": parent, "name": op.payload["new_name"]}),
                f"déplacement collection {op.payload['collection_id']}")
