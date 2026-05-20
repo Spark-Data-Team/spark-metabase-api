@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from reorg_lib import (CollectionNode, CardRef, MetabaseState,
                        load_plan, FamilySpec, CollectionMove,
                        verify_invariant, compute_lots, Phase1Plan,
-                       TO_SORT_COLLECTION_ID)
+                       TO_SORT_COLLECTION_ID, capture_state)
 
 
 def test_metabase_state_roundtrip():
@@ -117,12 +117,45 @@ def test_compute_lots_groups_operations():
     assert [op.payload["collection_id"] for op in lots["lot-5"]] == [211]
 
 
+def test_capture_state_walks_tree_and_excludes_conversions():
+    # Faux backend : réponses canned indexées par endpoint.
+    items = {
+        "/api/collection/215/items?limit=2000": {"data": [
+            {"model": "collection", "id": 214, "name": "01. Global"},
+            {"model": "collection", "id": 11673, "name": "18. Nouvelles Conversions"},
+            {"model": "card", "id": 29, "name": "CAC"},
+        ]},
+        "/api/collection/214/items?limit=2000": {"data": [
+            {"model": "card", "id": 46255, "name": "Loose card"},
+        ]},
+        # le sous-arbre de 11673 ne doit jamais être demandé
+    }
+    cards = {
+        29: {"id": 29, "name": "CAC", "collection_id": 215,
+             "dashboard_count": 1211, "archived": False},
+        46255: {"id": 46255, "name": "Loose card", "collection_id": 214,
+                "dashboard_count": 0, "archived": False},
+    }
+
+    def fake_get(endpoint):
+        if "/items" in endpoint:
+            return items[endpoint]
+        card_id = int(endpoint.split("/")[-1])
+        return cards[card_id]
+
+    state = capture_state(fake_get, root_id=215)
+    assert set(state.collections) == {215, 214, 11673}
+    assert set(state.cards) == {29, 46255}
+    assert state.collections[214].parent_id == 215
+
+
 TESTS = [test_metabase_state_roundtrip, test_load_plan,
          test_verify_invariant_clean_when_only_moved,
          test_verify_invariant_detects_lost_card,
          test_verify_invariant_detects_archived_card,
          test_verify_invariant_detects_dashboard_count_change,
-         test_compute_lots_groups_operations]
+         test_compute_lots_groups_operations,
+         test_capture_state_walks_tree_and_excludes_conversions]
 
 
 def run():

@@ -7,8 +7,10 @@ Voir docs/superpowers/specs/2026-05-20-generic-questions-reorg-phase1-design.md
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -16,6 +18,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 sys.path.insert(0, str(REPO_ROOT))
 
 from spark_metabase_api import Metabase_API  # noqa: E402
+from reorg_lib import capture_state, ROOT_COLLECTION_ID  # noqa: E402
 
 MIGRATION_DIR = REPO_ROOT / "migration"
 
@@ -54,7 +57,15 @@ def connect() -> Metabase_API:
 
 
 def cmd_snapshot(args):
-    raise NotImplementedError
+    mb = connect()
+    print(f"Capture du sous-arbre de la collection {ROOT_COLLECTION_ID}...")
+    state = capture_state(mb.get, root_id=ROOT_COLLECTION_ID)
+    MIGRATION_DIR.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    out = MIGRATION_DIR / f"snapshot-{ts}.json"
+    out.write_text(json.dumps(state.to_dict(), indent=2, ensure_ascii=False))
+    print(f"  {len(state.collections)} collections, {len(state.cards)} cartes")
+    print(f"Snapshot écrit : {out}")
 
 
 def cmd_plan(args):

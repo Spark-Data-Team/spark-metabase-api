@@ -176,3 +176,35 @@ def compute_lots(state: MetabaseState, plan: Phase1Plan) -> dict[str, list[Op]]:
             {"collection_id": coll_id}))
 
     return lots
+
+
+def capture_state(get, root_id: int = ROOT_COLLECTION_ID) -> MetabaseState:
+    """Parcourt le sous-arbre `root_id` et capture collections + cartes.
+
+    `get` est une fonction `endpoint -> json`. Le sous-arbre
+    EXCLUDE_COLLECTION_ID est enregistré comme collection mais son contenu
+    n'est pas parcouru.
+    """
+    collections: dict[int, CollectionNode] = {
+        root_id: CollectionNode(id=root_id, name="(root)", parent_id=None)
+    }
+    cards: dict[int, CardRef] = {}
+
+    def walk(coll_id: int):
+        items = get(f"/api/collection/{coll_id}/items?limit=2000").get("data", [])
+        for it in items:
+            if it["model"] == "collection":
+                collections[it["id"]] = CollectionNode(
+                    id=it["id"], name=it["name"], parent_id=coll_id)
+                if it["id"] != EXCLUDE_COLLECTION_ID:
+                    walk(it["id"])
+            elif it["model"] in ("card", "dataset"):
+                detail = get(f"/api/card/{it['id']}")
+                cards[it["id"]] = CardRef(
+                    id=detail["id"], name=detail["name"],
+                    collection_id=detail.get("collection_id"),
+                    dashboard_count=detail.get("dashboard_count", 0),
+                    archived=bool(detail.get("archived", False)))
+
+    walk(root_id)
+    return MetabaseState(collections=collections, cards=cards)
