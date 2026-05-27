@@ -39,3 +39,42 @@ def normalize_name(name: str) -> str:
         if ch.isalpha():
             return s[:i] + ch.upper() + s[i + 1 :]
     return s
+
+
+@dataclass(frozen=True)
+class CardRecord:
+    id: int
+    name: str
+    collection_id: int
+    dashboard_count: int
+    archived: bool
+    display: str
+
+
+def capture_snapshot(get, root_id: int = ROOT_COLLECTION_ID) -> dict[int, CardRecord]:
+    """Parcourt le sous-arbre `root_id` et capture les cartes (hors EXCLUDE).
+
+    `get` est une fonction `endpoint -> json`. Le sous-arbre
+    EXCLUDE_COLLECTION_ID n'est pas parcouru.
+    """
+    cards: dict[int, CardRecord] = {}
+
+    def walk(coll_id: int):
+        items = get(f"/api/collection/{coll_id}/items?limit=2000").get("data", [])
+        for it in items:
+            if it["model"] == "collection":
+                if it["id"] != EXCLUDE_COLLECTION_ID:
+                    walk(it["id"])
+            elif it["model"] in ("card", "dataset"):
+                detail = get(f"/api/card/{it['id']}")
+                cards[it["id"]] = CardRecord(
+                    id=detail["id"],
+                    name=detail["name"],
+                    collection_id=detail.get("collection_id"),
+                    dashboard_count=detail.get("dashboard_count", 0),
+                    archived=bool(detail.get("archived", False)),
+                    display=detail.get("display") or "",
+                )
+
+    walk(root_id)
+    return cards
