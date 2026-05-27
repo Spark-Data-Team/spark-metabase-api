@@ -87,7 +87,7 @@ def test_propose_viz_collision_adds_suffix():
         2: _rec(2, "Cac by date", display="bar"),
     }
     rows = sorted(propose_renames(snap), key=lambda r: r.card_id)
-    assert [r.proposed_name for r in rows] == ["CAC by date — Line", "CAC by date — Bar"]
+    assert [r.proposed_name for r in rows] == ["CAC by date — line", "CAC by date — bar"]
     assert [r.status for r in rows] == ["auto", "auto"]
     assert [r.rule for r in rows] == ["viz_collision", "viz_collision"]
 
@@ -113,6 +113,20 @@ def test_propose_cryptic_is_decision():
     assert rows[0].proposed_name == "Cac3"
 
 
+def test_propose_idempotent_on_already_suffixed_collision():
+    # Cartes déjà à leur forme cible après un premier apply
+    snap = {
+        1: _rec(1, "CAC by date — line", display="line"),
+        2: _rec(2, "CAC by date — bar", display="bar"),
+    }
+    assert propose_renames(snap) == []
+
+
+def test_propose_skips_whitespace_only_name():
+    snap = {1: _rec(1, "   ")}
+    assert propose_renames(snap) == []
+
+
 TESTS = [
     test_normalize_name_basic,
     test_capture_snapshot_excludes_conversions,
@@ -121,6 +135,8 @@ TESTS = [
     test_propose_viz_collision_adds_suffix,
     test_propose_true_duplicate_is_decision,
     test_propose_cryptic_is_decision,
+    test_propose_idempotent_on_already_suffixed_collision,
+    test_propose_skips_whitespace_only_name,
 ]
 
 

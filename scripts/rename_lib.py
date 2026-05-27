@@ -82,11 +82,11 @@ def capture_snapshot(get, root_id: int = ROOT_COLLECTION_ID) -> dict[int, CardRe
 
 
 DISPLAY_LABEL = {
-    "line": "Line", "bar": "Bar", "area": "Area", "combo": "Combo",
-    "pie": "Pie", "table": "Table", "scalar": "Scalar",
-    "smartscalar": "Smart scalar", "funnel": "Funnel",
-    "map": "Map", "waterfall": "Waterfall", "row": "Row",
-    "progress": "Progress", "gauge": "Gauge", "pivot": "Pivot",
+    "line": "line", "bar": "bar", "area": "area", "combo": "combo",
+    "pie": "pie", "table": "table", "scalar": "scalar",
+    "smartscalar": "smart scalar", "funnel": "funnel",
+    "map": "map", "waterfall": "waterfall", "row": "row",
+    "progress": "progress", "gauge": "gauge", "pivot": "pivot",
 }
 
 _CRYPTIC = [re.compile(p) for p in (r"^Cac\d+$", r"^Conv\d+$")]
@@ -107,7 +107,11 @@ def _is_cryptic(name: str) -> bool:
 
 
 def _viz_label(display: str) -> str:
-    return DISPLAY_LABEL.get(display, display.title() if display else "?")
+    if display in DISPLAY_LABEL:
+        return DISPLAY_LABEL[display]
+    if not display:
+        return "?"
+    return display.replace("_", " ").lower()
 
 
 def propose_renames(snapshot: dict[int, CardRecord]) -> list[ProposalRow]:
@@ -125,7 +129,7 @@ def propose_renames(snapshot: dict[int, CardRecord]) -> list[ProposalRow]:
                     card_id=rec.id, current_name=rec.name,
                     proposed_name=rec.name, rule="cryptic", status="décision",
                     notes="nom court non descriptif — humain décide"))
-            elif normalized != rec.name:
+            elif normalized and normalized != rec.name:
                 rows.append(ProposalRow(
                     card_id=rec.id, current_name=rec.name,
                     proposed_name=normalized, rule="normalize", status="auto"))
