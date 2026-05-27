@@ -159,11 +159,35 @@ def cmd_apply(args):
 
 
 def cmd_verify(args):
-    raise NotImplementedError
+    baseline = _snapshot_from_dict(json.loads(Path(args.snapshot).read_text()))
+    mb = connect()
+    current = capture_snapshot(mb.get, root_id=ROOT_COLLECTION_ID)
+    divergences = verify_invariant(baseline, current)
+    if divergences:
+        print(f"{len(divergences)} divergence(s) :")
+        for d in divergences:
+            print(f"  [{d.kind}] carte {d.card_id} : {d.detail}")
+        sys.exit(1)
+    print(f"OK — {len(current)} cartes, 0 divergence vs snapshot.")
 
 
 def cmd_rollback(args):
-    raise NotImplementedError
+    baseline = _snapshot_from_dict(json.loads(Path(args.snapshot).read_text()))
+    if not args.yes:
+        if input("Restaurer tous les noms du snapshot ? [tape 'oui'] "
+                 ).strip() != "oui":
+            sys.exit("Annulé.")
+    mb = connect()
+    current = capture_snapshot(mb.get, root_id=ROOT_COLLECTION_ID)
+    restored = 0
+    for cid, base in baseline.items():
+        cur = current.get(cid)
+        if cur and cur.name != base.name:
+            _check(mb.put(f"/api/card/{cid}", json={"name": base.name}),
+                   f"restauration carte {cid}")
+            print(f"  carte {cid} -> nom d'origine {base.name!r}")
+            restored += 1
+    print(f"Rollback terminé. {restored} carte(s) restaurée(s).")
 
 
 def main(argv=None):
