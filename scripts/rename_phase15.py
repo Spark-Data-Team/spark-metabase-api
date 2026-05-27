@@ -106,8 +106,56 @@ def cmd_propose(args):
     print("\n→ Relis et édite le CSV avant `apply`.")
 
 
+def _check(status, what):
+    """`mb.put` renvoie un code HTTP — on échoue fort si non-2xx."""
+    if not (200 <= int(status) < 300):
+        raise RuntimeError(f"{what} a échoué — HTTP {status}")
+
+
+def _load_proposal(path: Path) -> list[dict]:
+    with path.open(encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
 def cmd_apply(args):
-    raise NotImplementedError
+    baseline = _snapshot_from_dict(json.loads(Path(args.snapshot).read_text()))
+    proposal = _load_proposal(Path(args.proposal))
+    # Filtrer : ne renommer que les lignes où proposed != current ET proposed non vide
+    to_apply = [r for r in proposal
+                if r["proposed_name"] and r["proposed_name"] != r["current_name"]]
+    if not to_apply:
+        print("Aucun renommage à appliquer.")
+        return
+
+    print(f"\n=== Renommages à appliquer : {len(to_apply)} ===")
+    for r in to_apply[:20]:
+        print(f"  #{r['card_id']:>6} : {r['current_name']!r} -> {r['proposed_name']!r}  "
+              f"[{r['rule']}/{r['status']}]")
+    if len(to_apply) > 20:
+        print(f"  ... ({len(to_apply) - 20} de plus)")
+    if not args.yes:
+        if input(f"\nAppliquer ces {len(to_apply)} renommages ? [tape 'oui'] "
+                 ).strip() != "oui":
+            sys.exit("Annulé.")
+
+    mb = connect()
+    for r in to_apply:
+        cid = int(r["card_id"])
+        new_name = r["proposed_name"]
+        _check(mb.put(f"/api/card/{cid}", json={"name": new_name}),
+               f"renommage carte {cid}")
+        print(f"  #{cid} -> {new_name!r}")
+
+    print("\nVérification d'invariant post-batch...")
+    current = capture_snapshot(mb.get, root_id=ROOT_COLLECTION_ID)
+    divergences = verify_invariant(baseline, current)
+    if divergences:
+        print("DIVERGENCES DÉTECTÉES — ARRÊT :")
+        for d in divergences:
+            print(f"  [{d.kind}] carte {d.card_id} : {d.detail}")
+        sys.exit(1)
+    print(f"OK — {len(current)} cartes intactes (hors changement de nom), "
+          f"0 divergence.")
 
 
 def cmd_verify(args):
