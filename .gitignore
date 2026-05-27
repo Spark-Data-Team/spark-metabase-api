@@ -118,3 +118,4 @@ dmypy.json
 # Migration Phase 1 — artefacts runtime (régénérables)
 migration/snapshot-*.json
 migration/families.json
+migration/rename-snapshot-*.json
