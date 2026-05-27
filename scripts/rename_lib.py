@@ -9,9 +9,19 @@ ROOT_COLLECTION_ID = 215
 EXCLUDE_COLLECTION_ID = 11673
 
 ACRONYMS = {
+    # KPIs / metric acronyms
     "CAC", "CPC", "CPM", "CPL", "CPA", "CPI",
     "CTR", "CR", "ROAS", "COS", "KPI", "KPIs",
-    "SEO", "GA4", "PMax", "DPA", "ATC", "ROI",
+    "ATC", "ROI", "AOV", "IS", "CA",
+    "NCAC", "NROAS", "NCOS", "EVS",
+    # Domains / channels
+    "SEO", "SEA", "SMA", "GA4", "GSC", "SERP",
+    "PMax", "DPA", "DNVB", "BP",
+    # Misc
+    "URL", "LLM", "HT", "TTC", "NC", "YoY", "IA", "AI",
+    # Brand / platform names (preserved like acronyms)
+    "Adjust", "Shopify", "Google", "Amazon", "Meta",
+    "TikTok", "Magento", "Pinterest", "Spotify",
 }
 
 _ACRONYM_BY_UPPER = {a.upper(): a for a in ACRONYMS}
