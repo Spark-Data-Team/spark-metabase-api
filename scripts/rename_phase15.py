@@ -81,7 +81,29 @@ def cmd_snapshot(args):
 
 
 def cmd_propose(args):
-    raise NotImplementedError
+    snap = _snapshot_from_dict(json.loads(Path(args.snapshot).read_text()))
+    rows = propose_renames(snap)
+    # Tri : décisions d'abord, puis par nom courant
+    rows.sort(key=lambda r: (0 if r.status == "décision" else 1, r.current_name))
+    out = Path(args.out)
+    out.parent.mkdir(exist_ok=True)
+    with out.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["card_id", "current_name", "proposed_name",
+                    "rule", "status", "notes"])
+        for r in rows:
+            w.writerow([r.card_id, r.current_name, r.proposed_name,
+                        r.rule, r.status, r.notes])
+    by_status = {"auto": 0, "décision": 0}
+    by_rule: dict[str, int] = {}
+    for r in rows:
+        by_status[r.status] = by_status.get(r.status, 0) + 1
+        by_rule[r.rule] = by_rule.get(r.rule, 0) + 1
+    print(f"Proposition écrite : {out}")
+    print(f"  {len(rows)} lignes — auto: {by_status['auto']}, "
+          f"décision: {by_status['décision']}")
+    print(f"  par règle : " + ", ".join(f"{k}={v}" for k, v in sorted(by_rule.items())))
+    print("\n→ Relis et édite le CSV avant `apply`.")
 
 
 def cmd_apply(args):
