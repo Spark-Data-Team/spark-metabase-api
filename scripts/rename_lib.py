@@ -155,3 +155,35 @@ def propose_renames(snapshot: dict[int, CardRecord]) -> list[ProposalRow]:
                     proposed_name=proposed, rule="viz_collision", status="auto"))
 
     return rows
+
+
+@dataclass(frozen=True)
+class Divergence:
+    kind: str        # lost_card | archived_card | dashboard_count_changed | moved_card
+    card_id: int
+    detail: str
+
+
+def verify_invariant(baseline: dict[int, CardRecord],
+                     current: dict[int, CardRecord]) -> list[Divergence]:
+    out: list[Divergence] = []
+    for cid, base in baseline.items():
+        cur = current.get(cid)
+        if cur is None:
+            out.append(Divergence("lost_card", cid,
+                                   f"{base.name!r} absente de l'état courant"))
+            continue
+        if cur.archived and not base.archived:
+            out.append(Divergence("archived_card", cid,
+                                   f"{base.name!r} a été archivée"))
+        if cur.dashboard_count != base.dashboard_count:
+            out.append(Divergence(
+                "dashboard_count_changed", cid,
+                f"{base.name!r}: dashboard_count "
+                f"{base.dashboard_count} -> {cur.dashboard_count}"))
+        if cur.collection_id != base.collection_id:
+            out.append(Divergence(
+                "moved_card", cid,
+                f"{base.name!r}: collection {base.collection_id} -> "
+                f"{cur.collection_id}"))
+    return out

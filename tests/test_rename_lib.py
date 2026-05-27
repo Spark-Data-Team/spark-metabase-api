@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from rename_lib import normalize_name, CardRecord, capture_snapshot, propose_renames, ProposalRow
+from rename_lib import normalize_name, CardRecord, capture_snapshot, propose_renames, ProposalRow, verify_invariant
 
 
 def test_normalize_name_basic():
@@ -127,6 +127,35 @@ def test_propose_skips_whitespace_only_name():
     assert propose_renames(snap) == []
 
 
+def test_verify_clean_when_only_name_changed():
+    base = {1: _rec(1, "Cac_2", display="line")}
+    current = {1: _rec(1, "CAC 2", display="line")}
+    assert verify_invariant(base, current) == []
+
+
+def test_verify_detects_lost_card():
+    base = {1: _rec(1, "X")}
+    assert [d.kind for d in verify_invariant(base, {})] == ["lost_card"]
+
+
+def test_verify_detects_archived_card():
+    base = {1: _rec(1, "X")}
+    archived = CardRecord(1, "X", 214, 0, True, "line")
+    assert [d.kind for d in verify_invariant(base, {1: archived})] == ["archived_card"]
+
+
+def test_verify_detects_dashboard_count_change():
+    base = {1: _rec(1, "X", dashboard_count=10)}
+    cur = {1: _rec(1, "X", dashboard_count=9)}
+    assert [d.kind for d in verify_invariant(base, cur)] == ["dashboard_count_changed"]
+
+
+def test_verify_detects_moved_card():
+    base = {1: _rec(1, "X", collection_id=214)}
+    cur = {1: _rec(1, "X", collection_id=999)}
+    assert [d.kind for d in verify_invariant(base, cur)] == ["moved_card"]
+
+
 TESTS = [
     test_normalize_name_basic,
     test_capture_snapshot_excludes_conversions,
@@ -137,6 +166,11 @@ TESTS = [
     test_propose_cryptic_is_decision,
     test_propose_idempotent_on_already_suffixed_collision,
     test_propose_skips_whitespace_only_name,
+    test_verify_clean_when_only_name_changed,
+    test_verify_detects_lost_card,
+    test_verify_detects_archived_card,
+    test_verify_detects_dashboard_count_change,
+    test_verify_detects_moved_card,
 ]
 
 
