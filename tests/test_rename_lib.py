@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from rename_lib import normalize_name, CardRecord, capture_snapshot
+from rename_lib import normalize_name, CardRecord, capture_snapshot, propose_renames, ProposalRow
 
 
 def test_normalize_name_basic():
@@ -59,7 +59,69 @@ def test_capture_snapshot_excludes_conversions():
                                   display="scalar")
 
 
-TESTS = [test_normalize_name_basic, test_capture_snapshot_excludes_conversions]
+def _rec(id, name, display="line", collection_id=214, dashboard_count=0):
+    return CardRecord(id=id, name=name, collection_id=collection_id,
+                      dashboard_count=dashboard_count, archived=False,
+                      display=display)
+
+
+def test_propose_skips_unchanged_cards():
+    snap = {1: _rec(1, "Add to cart rate")}     # déjà propre
+    rows = propose_renames(snap)
+    assert rows == []
+
+
+def test_propose_auto_normalize_change():
+    snap = {1: _rec(1, "Add_to_cart_rate")}
+    rows = propose_renames(snap)
+    assert len(rows) == 1
+    assert rows[0].card_id == 1
+    assert rows[0].proposed_name == "Add to cart rate"
+    assert rows[0].status == "auto"
+    assert rows[0].rule == "normalize"
+
+
+def test_propose_viz_collision_adds_suffix():
+    snap = {
+        1: _rec(1, "Cac by date", display="line"),
+        2: _rec(2, "Cac by date", display="bar"),
+    }
+    rows = sorted(propose_renames(snap), key=lambda r: r.card_id)
+    assert [r.proposed_name for r in rows] == ["CAC by date — Line", "CAC by date — Bar"]
+    assert [r.status for r in rows] == ["auto", "auto"]
+    assert [r.rule for r in rows] == ["viz_collision", "viz_collision"]
+
+
+def test_propose_true_duplicate_is_decision():
+    snap = {
+        1: _rec(1, "Cac_2 by date, channel", display="line"),
+        2: _rec(2, "Cac_2 by date, channel", display="line"),
+    }
+    rows = sorted(propose_renames(snap), key=lambda r: r.card_id)
+    assert [r.status for r in rows] == ["décision", "décision"]
+    assert [r.rule for r in rows] == ["duplicate", "duplicate"]
+    # En statut décision, on laisse proposed = current
+    assert rows[0].proposed_name == rows[0].current_name
+
+
+def test_propose_cryptic_is_decision():
+    snap = {1: _rec(1, "Cac3")}
+    rows = propose_renames(snap)
+    assert len(rows) == 1
+    assert rows[0].status == "décision"
+    assert rows[0].rule == "cryptic"
+    assert rows[0].proposed_name == "Cac3"
+
+
+TESTS = [
+    test_normalize_name_basic,
+    test_capture_snapshot_excludes_conversions,
+    test_propose_skips_unchanged_cards,
+    test_propose_auto_normalize_change,
+    test_propose_viz_collision_adds_suffix,
+    test_propose_true_duplicate_is_decision,
+    test_propose_cryptic_is_decision,
+]
 
 
 def run():

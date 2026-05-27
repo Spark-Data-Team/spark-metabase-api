@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 
 ROOT_COLLECTION_ID = 215
@@ -78,3 +79,75 @@ def capture_snapshot(get, root_id: int = ROOT_COLLECTION_ID) -> dict[int, CardRe
 
     walk(root_id)
     return cards
+
+
+DISPLAY_LABEL = {
+    "line": "Line", "bar": "Bar", "area": "Area", "combo": "Combo",
+    "pie": "Pie", "table": "Table", "scalar": "Scalar",
+    "smartscalar": "Smart scalar", "funnel": "Funnel",
+    "map": "Map", "waterfall": "Waterfall", "row": "Row",
+    "progress": "Progress", "gauge": "Gauge", "pivot": "Pivot",
+}
+
+_CRYPTIC = [re.compile(p) for p in (r"^Cac\d+$", r"^Conv\d+$")]
+
+
+@dataclass(frozen=True)
+class ProposalRow:
+    card_id: int
+    current_name: str
+    proposed_name: str
+    rule: str        # normalize | viz_collision | duplicate | cryptic
+    status: str      # auto | décision
+    notes: str = ""
+
+
+def _is_cryptic(name: str) -> bool:
+    return any(p.match(name) for p in _CRYPTIC)
+
+
+def _viz_label(display: str) -> str:
+    return DISPLAY_LABEL.get(display, display.title() if display else "?")
+
+
+def propose_renames(snapshot: dict[int, CardRecord]) -> list[ProposalRow]:
+    # Group by normalized name
+    groups: dict[str, list[CardRecord]] = defaultdict(list)
+    for rec in snapshot.values():
+        groups[normalize_name(rec.name)].append(rec)
+
+    rows: list[ProposalRow] = []
+    for normalized, members in groups.items():
+        if len(members) == 1:
+            rec = members[0]
+            if _is_cryptic(rec.name):
+                rows.append(ProposalRow(
+                    card_id=rec.id, current_name=rec.name,
+                    proposed_name=rec.name, rule="cryptic", status="décision",
+                    notes="nom court non descriptif — humain décide"))
+            elif normalized != rec.name:
+                rows.append(ProposalRow(
+                    card_id=rec.id, current_name=rec.name,
+                    proposed_name=normalized, rule="normalize", status="auto"))
+            continue
+
+        # Groupe de 2+ cartes au même nom normalisé
+        displays = [m.display for m in members]
+        has_dup_display = len(set(displays)) < len(displays)
+        if has_dup_display:
+            # Au moins 2 cartes partagent le même display -> vrai doublon, humain tranche
+            ids = ", ".join(f"#{m.id}" for m in members)
+            for rec in members:
+                rows.append(ProposalRow(
+                    card_id=rec.id, current_name=rec.name,
+                    proposed_name=rec.name, rule="duplicate", status="décision",
+                    notes=f"doublon dans le groupe ({ids})"))
+        else:
+            # Tous les displays distincts -> suffixer
+            for rec in members:
+                proposed = f"{normalized} — {_viz_label(rec.display)}"
+                rows.append(ProposalRow(
+                    card_id=rec.id, current_name=rec.name,
+                    proposed_name=proposed, rule="viz_collision", status="auto"))
+
+    return rows
