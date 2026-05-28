@@ -120,3 +120,4 @@ migration/snapshot-*.json
 migration/families.json
 migration/rename-snapshot-*.json
 migration/xplat-snapshot-*.json
+migration/prune-candidates-*.json
