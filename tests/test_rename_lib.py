@@ -28,6 +28,20 @@ def test_normalize_name_basic():
     assert normalize_name("   ") == ""
 
 
+def test_normalize_name_cleanup():
+    # Espace après virgule + acronyme
+    assert normalize_name("Cr,clicks by date") == "CR, clicks by date"
+    # Parenthèses dupliquées réduites + marque préservée
+    assert normalize_name("Total installs (Adjust) (Adjust)") == "Total installs (Adjust)"
+    # Parenthèse collée à un mot -> espace, et acronyme interne détecté
+    assert normalize_name("Cac(conversions 1) - Morning") == "CAC (conversions 1) - morning"
+    # Idempotence des règles de nettoyage
+    for raw in ("Cr,clicks by date", "Total installs (Adjust) (Adjust)",
+                "Cac(conversions 1) - Morning"):
+        once = normalize_name(raw)
+        assert normalize_name(once) == once
+
+
 def test_capture_snapshot_excludes_conversions():
     items = {
         "/api/collection/215/items?limit=2000": {"data": [
@@ -158,6 +172,7 @@ def test_verify_detects_moved_card():
 
 TESTS = [
     test_normalize_name_basic,
+    test_normalize_name_cleanup,
     test_capture_snapshot_excludes_conversions,
     test_propose_skips_unchanged_cards,
     test_propose_auto_normalize_change,

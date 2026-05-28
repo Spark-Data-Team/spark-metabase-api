@@ -25,26 +25,27 @@ ACRONYMS = {
 }
 
 _ACRONYM_BY_UPPER = {a.upper(): a for a in ACRONYMS}
-_TOKEN_RE = re.compile(r"^(\W*)([A-Za-z0-9]+)(\W*)$")
-
-
-def _fix_acronym(tok: str) -> str:
-    m = _TOKEN_RE.match(tok)
-    if not m:
-        return tok
-    pre, core, post = m.groups()
-    canonical = _ACRONYM_BY_UPPER.get(core.upper())
-    return f"{pre}{canonical}{post}" if canonical else tok
+_ALNUM_RUN = re.compile(r"[A-Za-z0-9]+")
 
 
 def normalize_name(name: str) -> str:
-    """Trim, snake_case→spaces, Sentence case, acronymes préservés."""
+    """Trim, snake_case→spaces, ponctuation propre, Sentence case, acronymes préservés.
+
+    Nettoyage : espace après virgule, espace avant parenthèse collée à un mot,
+    parenthèses répétées identiques (`(X) (X)` -> `(X)`) réduites.
+    """
     s = name.replace("_", " ").strip()
     s = re.sub(r"\s+", " ", s)
+    s = re.sub(r",(?=\S)", ", ", s)                 # espace après virgule
+    s = re.sub(r"(?<=[A-Za-z0-9])\(", " (", s)      # espace avant '(' collée
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"(\([^()]+\))\s+\1", r"\1", s, flags=re.IGNORECASE)  # parenthèses dupliquées
     if not s:
         return s
     s = s.lower()
-    s = " ".join(_fix_acronym(t) for t in s.split(" "))
+    # Détection d'acronyme sur chaque segment alphanumérique (gère la ponctuation interne)
+    s = _ALNUM_RUN.sub(
+        lambda m: _ACRONYM_BY_UPPER.get(m.group(0).upper(), m.group(0)), s)
     # Capitaliser le premier caractère alphabétique
     for i, ch in enumerate(s):
         if ch.isalpha():
