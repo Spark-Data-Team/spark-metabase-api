@@ -45,18 +45,31 @@ def connect_resilient() -> Metabase_API:
     return Metabase_API(domain=domain, email=email, password=password)
 
 
-def query_fingerprint(dq: dict) -> str:
-    """Empreinte normalisée de la requête (ignore le nom/la mise en forme)."""
-    if not dq:
-        return "empty"
-    db = dq.get("database")
-    qtype = dq.get("type")
-    if qtype == "native":
-        sql = (dq.get("native", {}) or {}).get("query", "") or ""
+def query_fingerprint(card: dict) -> str:
+    """Empreinte normalisée de la requête, basée sur `legacy_query` (format classique).
+
+    Les versions récentes de Metabase stockent `dataset_query` au nouveau format
+    `lib/type`/`stages` (souvent vide via l'API) ; `legacy_query` (string JSON)
+    contient la requête classique fiable.
+    """
+    lq = card.get("legacy_query")
+    if isinstance(lq, str):
+        try:
+            lq = json.loads(lq)
+        except Exception:
+            lq = None
+    if not isinstance(lq, dict) or not lq:
+        # repli : sérialiser le dataset_query nouveau format
+        dq = card.get("dataset_query", {}) or {}
+        return "ds|" + hashlib.md5(
+            json.dumps(dq, sort_keys=True).encode("utf-8")).hexdigest()
+    db = lq.get("database")
+    if lq.get("type") == "native":
+        sql = (lq.get("native", {}) or {}).get("query", "") or ""
         norm = re.sub(r"\s+", " ", sql.strip().lower())
         payload = f"native|{db}|{norm}"
     else:
-        payload = f"mbql|{db}|" + json.dumps(dq.get("query", {}), sort_keys=True)
+        payload = f"mbql|{db}|" + json.dumps(lq.get("query", {}), sort_keys=True)
     return hashlib.md5(payload.encode("utf-8")).hexdigest()
 
 
@@ -80,7 +93,7 @@ def main():
                     "collection_id": d.get("collection_id"),
                     "dashboard_count": d.get("dashboard_count", 0),
                     "display": d.get("display") or "",
-                    "fp": query_fingerprint(d.get("dataset_query", {})),
+                    "fp": query_fingerprint(d),
                 })
 
     walk(ROOT_COLLECTION_ID)
