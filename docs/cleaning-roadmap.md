@@ -16,6 +16,7 @@
 - `scripts/audit.py` — `scan` → `deep` (cache reprenable) → `report`. Usage-aware (`last_used_at`/`view_count`/`average_query_time`).
 - `scripts/audit_lib.py` / `audit_report.py` — détecteurs, empreinte v2, scoring, rendu. 18 tests (`tests/test_audit_lib.py`, `test_audit_report.py`).
 - Exécuteurs (dry-run, re-vérif live, CSV de relecture, rollback) : `archive_empty_collections.py`, `archive_collections.py`, `archive_stale_cards.py`.
+- `swap_card_on_dashboards.py` + `swap_lib.py` (8 tests) : remplace une carte par sa canonique sur ses dashboards en recâblant les filtres, puis archive. Dry-run, `--difftest`, snapshot rollback, garde-fou tuile-en-double. **Dashboard-safe.**
 
 ## Campagnes par vague
 
@@ -25,7 +26,7 @@
 | 4 | Fourre-tout (set vert) | ✅ | 5 archivées | `archive_collections.py` ; test/POC dormants |
 | 5 | Cartes inutilisées périmées | ✅ | 315 archivées (≥1 an) | `archive_stale_cards.py` ; re-vérif live, exclut frozen ☠️ |
 | — | Usage replié dans l'audit | ✅ | — | `last_used_at`/`view_count`/`avg_query_time` ; 433 périmées repérées, #11 rempli |
-| 6 | Doublons fonctionnels | 🚧 | 156 groupes | fusion : archiver copies inutilisées d'abord, repointage dashboards ensuite (test diff.) |
+| 6 | Doublons fonctionnels | 🚧 | 156 groupes | **reframé** : 3 vrais doublons isolés (entangled), 39 en zone sensible, 111 cross-location = structure de propagation → relève de #8. Outil de swap prêt (dashboard-safe). Appliquer = décisions par-paire + cas tuile-en-double |
 | 11 | Cartes lentes | ⬜ | 213 | perf : fix-or-kill (plus lente = 224 s) |
 | 10 | Nommage hors template | ⬜ | 1919 | normalisation (étend Phase 1.5) |
 | 2 | Sprawl perso | ⬜ | 162 clients | sensible : sortir le travail client de l'espace perso |
@@ -46,6 +47,8 @@
 ## Garde-fous
 
 Toutes actions autorisées **mais validation avant chaque action** ; réversible d'abord (archivage, jamais suppression sans accord). Snapshot → (test différentiel) → échantillon → batch → invariant.
+
+**Invariant dashboard** : une carte sur ≥1 dashboard n'est JAMAIS archivée sans (a) la remplacer sur chaque dashboard par la canonique à la même place, (b) re-câbler les filtres (`parameter_mappings`), (c) test différentiel. Sinon, on ne touche que `dashboard_count == 0`. (→ `swap_card_on_dashboards.py`.)
 
 ## TODO outillage
 
