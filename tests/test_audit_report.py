@@ -11,9 +11,18 @@ import audit_report
 def _findings():
     return {
         "empty_collections": {"count": 200, "items": [{"id": i, "name": f"col{i}"} for i in range(200)]},
+        "archived_backlog": {"count": 1803, "items": [{"archived_cards": 0, "archived_collections": 1803}]},
         "pure_dups": {"count": 2, "items": [[{"id": 1, "name": "a"}, {"id": 2, "name": "b"}]]},
         "template_drift": {"count": 0, "items": []},
     }
+
+
+def test_archived_backlog_renders_clean_summary_line():
+    md = audit_report.render_report(_findings(), scanned_cards=5654, scanned_collections=868, date="2026-05-29")
+    assert "1803 collections + 0 cartes archivées" in md
+    # pas de dict brut ni de "+N" trompeur pour archived_backlog
+    assert "'archived_collections'" not in md
+    assert "+1798" not in md
 
 
 def test_report_is_short_and_caps_examples():
@@ -31,7 +40,8 @@ def test_report_short_overall():
     assert len(md.splitlines()) < 60  # digest, pas un pavé
 
 
-TESTS = [test_report_is_short_and_caps_examples, test_report_short_overall]
+TESTS = [test_report_is_short_and_caps_examples, test_report_short_overall,
+         test_archived_backlog_renders_clean_summary_line]
 
 
 def run():

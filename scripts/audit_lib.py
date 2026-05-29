@@ -193,7 +193,10 @@ def find_empty_collections(collections, cards, dashboards):
     empty = []
     for col in collections:
         cid = col.get("id")
-        if _is_personal(col) or cid in occupied or cid in occupied_ancestors:
+        # exclut la racine Metabase ("Our analytics", id="root" non entier) et les perso
+        if not isinstance(cid, int) or _is_personal(col):
+            continue
+        if cid in occupied or cid in occupied_ancestors:
             continue
         empty.append({"id": cid, "name": col.get("name"), "location": col.get("location") or "/"})
     return empty

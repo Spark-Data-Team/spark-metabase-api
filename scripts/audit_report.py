@@ -50,6 +50,12 @@ def render_report(findings, *, scanned_cards=0, scanned_collections=0, date=""):
         lines.append(f"### {WAVE_TITLES[wave]}")
         for f in wf:
             lines.append(f"- **{f['key']}** ({f.get('count',0)}) — {f.get('impact')}/{f.get('risk')}/{f.get('effort')}")
+            if f["key"] == "archived_backlog":
+                # 'count' est une somme (cartes + collections), pas une liste d'items
+                it = (f.get("items") or [{}])[0]
+                lines.append(f"  - {it.get('archived_collections', 0)} collections "
+                             f"+ {it.get('archived_cards', 0)} cartes archivées")
+                continue
             for item in f.get("items", [])[:MAX_EXAMPLES]:
                 lines.append(f"  - {_example_line(f['key'], item)}")
             if f.get("count", 0) > MAX_EXAMPLES:
