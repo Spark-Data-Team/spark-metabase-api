@@ -74,18 +74,31 @@ def query_fingerprint(card):
 def _output_selection(card):
     """Ce que la carte AFFICHE réellement — la clé des faux positifs.
 
-    Graphes : graph.metrics + graph.dimensions. Tables/pivots : colonnes activées.
+    Trois sources distinguent des variantes de vrais doublons :
+    - graphes : graph.metrics + graph.dimensions ;
+    - tables/pivots : colonnes activées ;
+    - défauts de paramètres (ex. `breakdown`=['device'|'age'|...]) : même SQL/viz
+      mais rendu différent par défaut (constaté en prod sur "Conversions by …").
     """
     vs = card.get("visualization_settings", {}) or {}
+    parts = {}
     metrics = vs.get("graph.metrics")
     dims = vs.get("graph.dimensions")
     if metrics or dims:
-        return json.dumps({"m": sorted(metrics or []), "d": sorted(dims or [])}, sort_keys=True)
-    cols = vs.get("table.columns")
-    if cols:
-        enabled = [c.get("name") for c in cols if isinstance(c, dict) and c.get("enabled", True)]
-        return json.dumps({"cols": enabled}, sort_keys=True)
-    return ""
+        # Donnée réelle parfois sale : la liste peut contenir des None -> on les
+        # écarte et on stringifie avant de trier (sorted() ne compare pas None à str).
+        parts["m"] = sorted(str(x) for x in (metrics or []) if x is not None)
+        parts["d"] = sorted(str(x) for x in (dims or []) if x is not None)
+    else:
+        cols = vs.get("table.columns")
+        if cols:
+            parts["cols"] = [c.get("name") for c in cols if isinstance(c, dict) and c.get("enabled", True)]
+    pdef = {p.get("slug"): p.get("default")
+            for p in (card.get("parameters") or [])
+            if p.get("default") is not None}
+    if pdef:
+        parts["p"] = pdef
+    return json.dumps(parts, sort_keys=True) if parts else ""
 
 
 def output_fingerprint(card):

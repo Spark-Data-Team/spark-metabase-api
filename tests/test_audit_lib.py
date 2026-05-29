@@ -64,6 +64,32 @@ def test_output_fingerprint_identical_for_true_duplicate():
     assert audit_lib.output_fingerprint(a) == audit_lib.output_fingerprint(b)
 
 
+def test_output_fingerprint_handles_none_in_metrics():
+    # Donnée réelle sale rencontrée en prod : graph.metrics/dimensions peut contenir None.
+    card = {"id": 1, "display": "line", "legacy_query": _GSC_SQL,
+            "visualization_settings": {"graph.metrics": ["CLICKS", None], "graph.dimensions": [None]}}
+    fp = audit_lib.output_fingerprint(card)  # ne doit pas lever
+    assert isinstance(fp, str)
+
+
+def test_output_fingerprint_distinct_for_parameter_default_variants():
+    # "Conversions by device/age/country" : même SQL, même display 'pie', sans
+    # graph.metrics — diffèrent seulement par le défaut du paramètre `breakdown`
+    # (2e classe de faux positifs constatée en prod).
+    sql = json.dumps({"type": "native", "database": 2,
+                      "native": {"query": "SELECT breakdown_value AS dimension FROM t"}})
+
+    def card(cid, val):
+        return {"id": cid, "name": f"Conversions by {val}", "display": "pie", "legacy_query": sql,
+                "visualization_settings": {}, "parameters": [{"slug": "breakdown", "default": [val]}]}
+
+    a, b, c = card(1, "device"), card(2, "age"), card(3, "country")
+    assert len({audit_lib.output_fingerprint(x) for x in (a, b, c)}) == 3
+    res = audit_lib.classify_query_groups([a, b, c])
+    assert res["pure_dups"] == []
+    assert any({x["id"] for x in g} == {1, 2, 3} for g in res["variant_families"])
+
+
 # --- Classification ----------------------------------------------------------
 
 def test_classify_separates_dups_variants_and_viz():
@@ -202,6 +228,8 @@ TESTS = [
     test_query_fingerprint_identical_for_gsc_trio,
     test_output_fingerprint_distinct_for_gsc_trio,
     test_output_fingerprint_identical_for_true_duplicate,
+    test_output_fingerprint_handles_none_in_metrics,
+    test_output_fingerprint_distinct_for_parameter_default_variants,
     test_classify_separates_dups_variants_and_viz,
     test_build_source_ids_finds_card_references,
     test_find_unused_cards_excludes_sources_and_used,
