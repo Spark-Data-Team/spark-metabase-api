@@ -27,7 +27,7 @@
 | 5 | Cartes inutilisées périmées | ✅ | 315 archivées (≥1 an) | `archive_stale_cards.py` ; re-vérif live, exclut frozen ☠️ |
 | — | Usage replié dans l'audit | ✅ | — | `last_used_at`/`view_count`/`avg_query_time` ; 433 périmées repérées, #11 rempli |
 | 6 | Doublons fonctionnels | 🚧 | 156 groupes | **reframé** : 3 vrais doublons isolés (entangled), 39 en zone sensible, 111 cross-location = structure de propagation → relève de #8. Outil de swap prêt (dashboard-safe). Appliquer = décisions par-paire + cas tuile-en-double |
-| 11 | Cartes lentes | ⬜ | 213 | perf : fix-or-kill (plus lente = 224 s) |
+| 11 | Cartes lentes | 🔎 triagé | 212 actives | **toutes sur dashboard → optimiser en place (pas d'archivage)**. ROI réel = famille **benchmark "client vs industry vs global"** (~14 s × 20-33k vues : #2116/2187/2115/2097/2240-2243). Les GSC 224 s sont lentes mais peu vues (faible ROI). Optimisation = matérialiser/pré-agréger les benchmarks industrie+global (requête Snowflake multi-CTE) + test différentiel. Discipline distincte → session dédiée. Alerte #2510 (99 s × 2496 vues) à part. |
 | 10 | Nommage hors template | ⬜ | 1919 | normalisation (étend Phase 1.5) |
 | 2 | Sprawl perso | ⬜ | 162 clients | sensible : sortir le travail client de l'espace perso |
 | 3 | Noms de collections dupliqués | ⬜ | 45 | |
