@@ -193,8 +193,10 @@ def find_empty_collections(collections, cards, dashboards):
     empty = []
     for col in collections:
         cid = col.get("id")
-        # exclut la racine Metabase ("Our analytics", id="root" non entier) et les perso
-        if not isinstance(cid, int) or _is_personal(col):
+        # exclut : racine Metabase ("Our analytics", id non entier), perso, et les
+        # collections SYSTÈME (type non nul : 'library', 'library-data'… — la Metrics
+        # Library de Metabase, non archivable : "Cannot update properties on a Library collection").
+        if not isinstance(cid, int) or _is_personal(col) or col.get("type"):
             continue
         if cid in occupied or cid in occupied_ancestors:
             continue

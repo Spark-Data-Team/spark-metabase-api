@@ -142,12 +142,13 @@ def test_find_empty_collections_respects_descendants_and_personal():
         {"id": 3, "name": "Vraiment vide", "location": "/"},
         {"id": 4, "name": "Perso vide", "location": "/", "personal_owner_id": 9},
         {"id": "root", "name": "Our analytics", "location": "/"},  # racine Metabase, à exclure
+        {"id": 6, "name": "Metrics", "location": "/", "type": "library-metrics"},  # système, non archivable
     ]
     cards = [{"id": 50, "collection_id": 2, "archived": False}]
     dashboards = []
     empty = audit_lib.find_empty_collections(collections, cards, dashboards)
     ids = {e["id"] for e in empty}
-    assert ids == {3}        # 1 a un descendant occupé ; 2 occupée ; 4 perso ; root exclue
+    assert ids == {3}        # 1 descendant occupé ; 2 occupée ; 4 perso ; root + 6 (système) exclues
 
 
 def test_find_junk_collections_matches_names():
