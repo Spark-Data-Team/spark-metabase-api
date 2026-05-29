@@ -127,5 +127,7 @@ migration/audit-cache/
 migration/archive-empty-collections-*.json
 migration/empty-collections-review-*.csv
 migration/archive-collections-*.json
+migration/archive-stale-cards-*.json
+migration/stale-cards-review-*.csv
 # Rapport d'audit : données live (noms de clients) — régénérable, non versionné par défaut
 docs/audits/
