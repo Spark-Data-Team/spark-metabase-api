@@ -122,3 +122,7 @@ migration/rename-snapshot-*.json
 migration/xplat-snapshot-*.json
 migration/prune-candidates-*.json
 migration/dupes-report-*.json
+migration/audit-findings-*.json
+migration/audit-cache/
+# Rapport d'audit : données live (noms de clients) — régénérable, non versionné par défaut
+docs/audits/
