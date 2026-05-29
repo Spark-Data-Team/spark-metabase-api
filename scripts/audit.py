@@ -175,13 +175,33 @@ def cmd_deep(args):
     f["variant_families"] = {"count": len(groups["variant_families"]),
                              "items": [[{"id": c["id"], "name": c.get("name")} for c in g]
                                        for g in groups["variant_families"]]}
-    f["unused_cards"] = {"count": len(unused),
-                         "items": [{"id": c["id"], "name": c.get("name")} for c in unused]}
+    now_iso = datetime.now().strftime("%Y-%m-%d")
+    unused_items = [{
+        "id": c["id"], "name": c.get("name"),
+        "last_used_at": c.get("last_used_at"),
+        "view_count": c.get("view_count") or 0,
+        "days_since_used": audit_lib.days_since(c.get("last_used_at"), now_iso),
+        "stale": audit_lib.is_stale(c, now_iso),
+    } for c in unused]
+    # plus périmées d'abord : jamais utilisées (None) en tête, puis ancienneté, puis vues
+    unused_items.sort(key=lambda x: (-(x["days_since_used"] if x["days_since_used"] is not None else 10**9),
+                                      x["view_count"]))
+    stale_count = sum(1 for u in unused_items if u["stale"])
+    f["unused_cards"] = {"count": len(unused_items), "stale_count": stale_count, "items": unused_items}
+
+    # #11 perf : cartes les plus lentes (average_query_time en ms)
+    exp = [c for c in details if (c.get("average_query_time") or 0) >= 10000 and not c.get("archived")]
+    exp.sort(key=lambda c: -(c.get("average_query_time") or 0))
+    f["expensive_cards"] = {"count": len(exp),
+                            "items": [{"id": c["id"], "name": c.get("name"),
+                                       "avg_query_ms": round(c.get("average_query_time") or 0),
+                                       "view_count": c.get("view_count") or 0} for c in exp]}
+
     f["template_drift"] = {"count": len(drift), "items": drift}
     blob["meta"]["deep_done"] = True
     findings_file.write_text(json.dumps(blob, indent=2, ensure_ascii=False))
     print(f"  doublons:{len(groups['pure_dups'])} variantes:{len(groups['variant_families'])} "
-          f"inutilisées:{len(unused)} dérive:{len(drift)}")
+          f"inutilisées:{len(unused)} (périmées≥6mois:{stale_count}) lentes:{len(exp)} dérive:{len(drift)}")
     print(f"Findings enrichis : {findings_file}")
 
 

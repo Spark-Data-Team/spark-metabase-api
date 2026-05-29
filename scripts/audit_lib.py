@@ -13,6 +13,7 @@ import json
 import re
 import sys
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -21,6 +22,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 from rename_lib import normalize_name  # noqa: E402  (réutilise la normalisation Phase 1.5)
 
 TEMPLATE_ROOT_ID = 215
+STALE_DAYS = 180  # seuil "non utilisé depuis longtemps" (≈6 mois)
 
 # Registre des patterns : scoring Impact/Risque/Effort + vague (cf. spec §6).
 PATTERNS = {
@@ -170,6 +172,34 @@ def find_unused_cards(cards, source_ids):
             and c["id"] not in source_ids]
 
 
+# --- Signaux d'usage (last_used_at / view_count) -----------------------------
+
+def days_since(ts, now):
+    """Jours entre l'ISO `ts` et l'ISO `now` (passé explicitement = déterministe).
+
+    None si `ts` est vide ou illisible.
+    """
+    if not ts:
+        return None
+    try:
+        a = datetime.fromisoformat(str(ts).replace("Z", "")[:19]).date()
+        b = datetime.fromisoformat(str(now).replace("Z", "")[:19]).date()
+        return (b - a).days
+    except Exception:
+        return None
+
+
+def is_stale(card, now, stale_days=STALE_DAYS):
+    """Carte « dormante » : dernière utilisation il y a ≥ stale_days (≈ candidate au nettoyage).
+
+    Critère = récence seule. Le view_count n'entre PAS dans la décision (une carte
+    très vue mais dormante depuis 6 mois reste à reconsidérer) ; il est affiché
+    comme contexte dans le rapport. Récence inconnue (last_used_at absent) -> non flaggée.
+    """
+    d = days_since(card.get("last_used_at"), now)
+    return d is not None and d >= stale_days
+
+
 # --- Détecteurs de collections -----------------------------------------------
 
 def _is_personal(col):
@@ -301,6 +331,7 @@ def summarize_findings(findings):
     out = []
     for key, data in findings.items():
         meta = PATTERNS.get(key, {})
-        out.append({"key": key, **meta, "count": data.get("count", 0), "items": data.get("items", [])})
+        out.append({"key": key, **meta, "count": data.get("count", 0),
+                    "items": data.get("items", []), "stale_count": data.get("stale_count")})
     out.sort(key=lambda f: (f.get("wave", 9), -f.get("count", 0)))
     return out

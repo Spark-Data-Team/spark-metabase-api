@@ -26,7 +26,13 @@ def _example_line(key, item):
         return f"« {item.get('name')} » ×{item.get('count')}"
     if key == "personal_sprawl":
         return f"{item.get('client')} ×{item.get('count')}"
-    if key in ("unused_cards", "naming_issues", "template_drift"):
+    if key == "unused_cards":
+        d = item.get("days_since_used")
+        rec = f"{d}j" if d is not None else "jamais"
+        return f"#{item.get('id')} {item.get('name')} (vu {rec}, {item.get('view_count', 0)} vues)"
+    if key == "expensive_cards":
+        return f"#{item.get('id')} {item.get('name')} ({item.get('avg_query_ms')} ms, {item.get('view_count', 0)} vues)"
+    if key in ("naming_issues", "template_drift"):
         return f"#{item.get('id')} {item.get('name')}"
     if key in ("pure_dups", "variant_families"):
         return f"groupe de {len(item)} : " + ", ".join(f"#{c['id']}" for c in item[:4])
@@ -49,7 +55,8 @@ def render_report(findings, *, scanned_cards=0, scanned_collections=0, date=""):
             continue
         lines.append(f"### {WAVE_TITLES[wave]}")
         for f in wf:
-            lines.append(f"- **{f['key']}** ({f.get('count',0)}) — {f.get('impact')}/{f.get('risk')}/{f.get('effort')}")
+            extra = f" · {f['stale_count']} périmées ≥6 mois" if f.get("stale_count") is not None else ""
+            lines.append(f"- **{f['key']}** ({f.get('count',0)}{extra}) — {f.get('impact')}/{f.get('risk')}/{f.get('effort')}")
             if f["key"] == "archived_backlog":
                 # 'count' est une somme (cartes + collections), pas une liste d'items
                 it = (f.get("items") or [{}])[0]

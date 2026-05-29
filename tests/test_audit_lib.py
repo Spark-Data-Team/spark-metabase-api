@@ -133,6 +133,21 @@ def test_find_unused_cards_excludes_sources_and_used():
     assert [c["id"] for c in unused] == [1]
 
 
+def test_days_since():
+    assert audit_lib.days_since("2026-03-11T09:51:41Z", "2026-05-29") == 79
+    assert audit_lib.days_since(None, "2026-05-29") is None
+    assert audit_lib.days_since("pas une date", "2026-05-29") is None
+
+
+def test_is_stale_uses_recency():
+    now = "2026-05-29"
+    assert audit_lib.is_stale({"last_used_at": "2025-10-01T00:00:00Z"}, now)        # ~8 mois -> dormante
+    assert not audit_lib.is_stale({"last_used_at": "2026-05-01T00:00:00Z"}, now)    # récent
+    assert not audit_lib.is_stale({"last_used_at": None}, now)                       # récence inconnue -> non flaggée
+    # dormante même si très vue historiquement (le view_count n'est pas un critère)
+    assert audit_lib.is_stale({"last_used_at": "2024-01-01T00:00:00Z", "view_count": 5000}, now)
+
+
 # --- Détecteurs de collections -----------------------------------------------
 
 def test_find_empty_collections_respects_descendants_and_personal():
@@ -235,6 +250,8 @@ TESTS = [
     test_classify_separates_dups_variants_and_viz,
     test_build_source_ids_finds_card_references,
     test_find_unused_cards_excludes_sources_and_used,
+    test_days_since,
+    test_is_stale_uses_recency,
     test_find_empty_collections_respects_descendants_and_personal,
     test_find_junk_collections_matches_names,
     test_find_duplicate_collection_names,
