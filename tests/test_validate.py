@@ -256,3 +256,64 @@ def test_iac_apply_gate_aborts(monkeypatch):
     except V.ValidationError:
         pass
     assert called["executed"] is False  # gate aborted before mutation
+
+
+# --- Adversarial-review fixes (2026-06-20) ---
+
+def test_differential_identical_numeric_to_null():
+    """[#1] A numeric column going all-NULL (same name + row count) is a delta in identical mode."""
+    before = [{"id": 1, "amount": 100}, {"id": 2, "amount": 200}]
+    after = [{"id": 1, "amount": None}, {"id": 2, "amount": None}]
+    fs = V.check_differential("c/rev", before, after, mode="identical")
+    assert any(f.level == "error" for f in fs), \
+        "numeric->all-null must error in identical mode, got {}".format([f.message for f in fs])
+
+
+def test_differential_identical_numeric_to_string():
+    """[#1] A numeric column turning into a string is a delta in identical mode."""
+    before = [{"revenue": 100, "name": "x"}]
+    after = [{"revenue": "N/A", "name": "x"}]
+    fs = V.check_differential("t", before, after, mode="identical")
+    assert any(f.level == "error" for f in fs)
+
+
+def test_execution_unsaved_run_query_raises_is_collected():
+    """[#2] A network error in run_query becomes an error Finding, never crashes the gate."""
+    class RaisingClient:
+        def run_query(self, dq, parameters=None):
+            raise ConnectionError("boom")
+    u = V.CardUnit("c/A", {"database": 1, "type": "native", "native": {"query": "SELECT 1"}})
+    f = V.check_execution(RaisingClient(), u)
+    assert f.level == "error" and "boom" in f.message
+    rep = V.gate(RaisingClient(), [u], execute=True)  # must not raise
+    assert not rep.ok()
+
+
+def test_execution_unsaved_non_completed_status_is_error():
+    """[#2] A non-'completed' status or an error body is an error, not a 0-rows warn."""
+    stuck = ExecClient(dataset_result={"status": "running"})
+    u = V.CardUnit("c/A", {"database": 1, "type": "native", "native": {"query": "SELECT 1"}})
+    assert V.check_execution(stuck, u).level == "error"
+    errbody = ExecClient(dataset_result={"message": "Bad request"})  # 4xx body, no status
+    assert V.check_execution(errbody, u).level == "error"
+
+
+def test_check_structure_invalid_database_and_blank_sql():
+    """[#3] database None/0 and whitespace-only native SQL fail structure."""
+    assert V.check_structure(V.CardUnit("c/A", {"database": None, "type": "native",
+        "native": {"query": "SELECT 1"}})).level == "error"
+    assert V.check_structure(V.CardUnit("c/B", {"database": 0, "type": "native",
+        "native": {"query": "SELECT 1"}})).level == "error"
+    assert V.check_structure(V.CardUnit("c/C", {"database": 1, "type": "native",
+        "native": {"query": "   \n  "}})).level == "error"
+
+
+def test_resolve_cli_target_bad_spec_file(tmp_path):
+    """[#5] A spec-looking path that is missing or not a valid spec raises a clear ValueError."""
+    import pytest
+    with pytest.raises(ValueError):
+        V.resolve_cli_target(object(), str(tmp_path / "nope.json"))
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"not": "a spec"}')
+    with pytest.raises(ValueError):
+        V.resolve_cli_target(object(), str(bad))

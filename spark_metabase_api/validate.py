@@ -69,11 +69,11 @@ class Finding:
 
 def check_structure(unit: "CardUnit") -> Finding:
     dq = unit.dataset_query
-    if not isinstance(dq, dict) or "database" not in dq:
-        return Finding(unit.target, "structure", "error", "dataset_query missing 'database'")
+    if not isinstance(dq, dict) or not dq.get("database"):
+        return Finding(unit.target, "structure", "error", "dataset_query missing or invalid 'database'")
     qtype = dq.get("type")
     if qtype == "native":
-        if not (dq.get("native") or {}).get("query"):
+        if not ((dq.get("native") or {}).get("query") or "").strip():
             return Finding(unit.target, "structure", "error", "native query is empty")
     elif qtype == "query":
         if not dq.get("query"):
@@ -161,10 +161,17 @@ def _execute_unit(client, unit: "CardUnit"):
             err = rows.get("error") if isinstance(rows, dict) else None
             return [], err or "query failed (unexpected result shape)"
         return rows, None
-    res = client.run_query(unit.dataset_query)
-    if not isinstance(res, dict) or res.get("status") == "failed" or res.get("error"):
-        err = res.get("error") if isinstance(res, dict) else "HTTP error"
-        return [], err or "query failed"
+    try:
+        res = client.run_query(unit.dataset_query)
+    except Exception as e:
+        return [], str(e)
+    if not isinstance(res, dict):
+        return [], "query failed (non-dict response)"
+    # /api/dataset returns status=="completed" on success. Anything else
+    # (failed / running / missing, or a 4xx error body) is a failure, not
+    # "0 rows" — otherwise an errored query slips through the gate as a warn.
+    if res.get("error") or res.get("status") != "completed":
+        return [], res.get("error") or "query status: {!r}".format(res.get("status"))
     data = res.get("data") or {}
     cols = [c.get("name") for c in (data.get("cols") or [])]
     rows = [dict(zip(cols, r)) for r in (data.get("rows") or [])]
@@ -248,8 +255,16 @@ def guarded_apply(client, units, mutate_fn, differential="monitor",
 def resolve_cli_target(client, target: str) -> List["CardUnit"]:
     import os
     from . import iac
-    if target.lower().endswith((".yaml", ".yml", ".json")) and os.path.exists(target):
-        return units_from_spec(iac.load(target))
+    if target.lower().endswith((".yaml", ".yml", ".json")):
+        if not os.path.exists(target):
+            raise ValueError("spec file not found: {}".format(target))
+        try:
+            spec = iac.load(target)
+        except Exception as e:
+            raise ValueError("not a valid Metabase spec file {}: {}".format(target, e))
+        if not getattr(spec, "name", None):
+            raise ValueError("not a valid Metabase spec (missing 'name'): {}".format(target))
+        return units_from_spec(spec)
     if target.isdigit():
         return [unit_from_card_id(client, int(target))]
     return units_from_spec(iac.export(client, target))
@@ -272,12 +287,21 @@ def check_differential(target, before, after, mode="monitor", tolerance=0.0) -> 
         findings.append(Finding(target, "differential", level, "columns changed",
             before=sb["columns"], after=sa["columns"]))
 
+    after_cols = set(sa["columns"])
     for c, bsum in sb["sums"].items():
         asum = sa["sums"].get(c)
         if asum is None:
+            # The column was numeric before but has no numeric sum now. If it is
+            # still present (same name), it regressed to all-null or a non-numeric
+            # type — a real delta the row-count and column-set checks cannot see.
+            if c in after_cols:
+                findings.append(Finding(target, "differential", level,
+                    "sum({}) numeric -> non-numeric/all-null".format(c),
+                    before=bsum, after=None))
             continue
         denom = abs(bsum) or 1.0
-        if abs(asum - bsum) / denom > tolerance:
+        delta = abs(asum - bsum)
+        if delta != delta or delta / denom > tolerance:  # NaN, or beyond tolerance
             findings.append(Finding(target, "differential", level,
                 "sum({}) {} -> {}".format(c, bsum, asum), before=bsum, after=asum))
 
