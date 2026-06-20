@@ -9,6 +9,9 @@ class CardUnit:
     display: Optional[str] = None
     visualization_settings: Optional[Dict[str, Any]] = None
     live_card_id: Optional[int] = None
+    # Reserved hooks — not yet wired into guarded_apply/check_differential in v1,
+    # which uses the auto metric derived from _signature. Future versions will
+    # honour these fields for column-level assertions and metric overrides.
     expected_columns: Optional[List[str]] = None
     metric_override: Optional[Dict[str, Any]] = None
 
@@ -91,13 +94,18 @@ def check_refs(client, unit: "CardUnit") -> List[Finding]:
     if dq.get("type") == "query":
         src = (dq.get("query") or {}).get("source-table")
         if isinstance(src, str) and src.startswith("card__"):
-            cid = int(src.split("__")[1])
-            if not _card_exists(client, cid):
+            try:
+                cid = int(src.split("__")[1])
+            except (ValueError, IndexError):
                 findings.append(Finding(unit.target, "refs", "error",
-                    "source card {} not found / archived".format(cid)))
+                    "malformed source-table ref {!r}".format(src)))
+            else:
+                if not _card_exists(client, cid):
+                    findings.append(Finding(unit.target, "refs", "error",
+                        "source card {} not found / archived".format(cid)))
     for tag in ((dq.get("native") or {}).get("template-tags") or {}).values():
         cid = (tag.get("values_source_config") or {}).get("card_id")
-        if cid and not _card_exists(client, cid):
+        if cid is not None and not _card_exists(client, cid):
             findings.append(Finding(unit.target, "refs", "error",
                 "field-filter source card {} not found / archived".format(cid)))
     if not findings:
@@ -149,7 +157,10 @@ def _execute_unit(client, unit: "CardUnit"):
             rows = client.get_card_data(card_id=unit.live_card_id, data_format="json")
         except Exception as e:
             return [], str(e)
-        return rows or [], None
+        if not isinstance(rows, list):
+            err = rows.get("error") if isinstance(rows, dict) else None
+            return [], err or "query failed (unexpected result shape)"
+        return rows, None
     res = client.run_query(unit.dataset_query)
     if not isinstance(res, dict) or res.get("status") == "failed" or res.get("error"):
         err = res.get("error") if isinstance(res, dict) else "HTTP error"

@@ -95,6 +95,29 @@ def test_check_execution():
     assert V.check_execution(saved, su).level == "ok"
 
 
+# FIX 1: saved-card path must detect query failure (dict result, not list)
+def test_check_execution_saved_card_failure():
+    """get_card_data returning a dict (failed query) must surface as an error, not ok."""
+    class FailedCardClient:
+        def get_card_data(self, card_id=None, data_format="json"):
+            return {"status": "failed", "error": "SQL compilation error"}
+    su = V.CardUnit("card#5", {"database": 1, "type": "native", "native": {"query": "x"}}, live_card_id=5)
+    f = V.check_execution(FailedCardClient(), su)
+    assert f.level == "error", "expected error level, got {!r}".format(f.level)
+    assert "SQL compilation error" in f.message, "expected error text in message: {!r}".format(f.message)
+
+
+# FIX 2: check_refs must not raise on malformed source-table refs
+def test_check_refs_malformed_source_table():
+    """Malformed 'card__abc' ref must emit a refs error, not raise ValueError/IndexError."""
+    client = FakeClient({})
+    unit = V.CardUnit("c/X", {"database": 1, "type": "query",
+                               "query": {"source-table": "card__abc"}})
+    findings = V.check_refs(client, unit)
+    assert any(f.level == "error" and "refs" == f.check for f in findings), \
+        "expected a refs error finding for malformed ref"
+
+
 def test_check_differential():
     before = [{"k": "a", "v": 10}, {"k": "b", "v": 20}]
     same = [{"k": "a", "v": 10}, {"k": "b", "v": 20}]
@@ -145,6 +168,76 @@ def test_resolve_cli_target_card_id():
                                                "native": {"query": "x"}}}})
     units = V.resolve_cli_target(client, "4")
     assert units[0].live_card_id == 4
+
+
+# FIX 3a: guarded_apply differential path
+def test_guarded_apply_differential_monitor():
+    """guarded_apply with differential='monitor' emits a warn finding when results change."""
+    call_count = {"n": 0}
+    baseline_rows = [{"v": 10}]
+    after_rows = [{"v": 20}]
+
+    class DiffClient:
+        def get(self, ep, *a, **k):
+            return {"archived": False}
+        def get_card_data(self, card_id=None, data_format="json"):
+            # first call: baseline; second call (post-mutate): different
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return baseline_rows
+            return after_rows
+        def run_query(self, dq, parameters=None):
+            return {"status": "completed", "data": {"cols": [{"name": "v"}], "rows": [[10]]}}
+
+    # A live unit with a well-formed dataset_query so structure/refs/execution all pass
+    live_unit = V.CardUnit(
+        target="c/A",
+        dataset_query={"database": 1, "type": "native", "native": {"query": "SELECT v"}},
+        live_card_id=42,
+    )
+
+    mutated = []
+    report = V.guarded_apply(
+        DiffClient(),
+        [live_unit],
+        lambda: mutated.append(1),
+        differential="monitor",
+        execute=True,
+    )
+
+    assert mutated == [1], "mutate_fn should have been called"
+    diff_findings = [f for f in report.findings if f.check == "differential"]
+    assert diff_findings, "expected differential findings"
+    assert any(f.level == "warn" for f in diff_findings), \
+        "expected a warn in monitor mode for changed results"
+
+
+# FIX 3b: iac.apply(validate=True) happy path
+def test_iac_apply_validate_happy_path(monkeypatch):
+    """iac.apply(validate=True) with a clean spec calls _execute_collection (no ValidationError)."""
+    from spark_metabase_api import iac, validate as V
+
+    spec = iac.spec_from_dict({"name": "Clean", "cards": [{"name": "Card1", "definition": {
+        "dataset_query": {"database": 1, "type": "native", "native": {"query": "SELECT 1"}},
+        "display": "scalar",
+    }}]})
+
+    # Client that passes execution gate
+    class HappyClient:
+        def get(self, ep, *a, **k):
+            return {"archived": False}
+        def run_query(self, dq, parameters=None):
+            return {"status": "completed",
+                    "data": {"cols": [{"name": "n"}], "rows": [[1]]}}
+
+    called = {"executed": False}
+    monkeypatch.setattr(iac, "plan", lambda *a, **k: iac.Plan())
+    monkeypatch.setattr(iac, "_execute_collection",
+                        lambda *a, **k: called.__setitem__("executed", True))
+
+    # Should NOT raise; gate passes cleanly
+    iac.apply(HappyClient(), spec, validate=True)
+    assert called["executed"] is True, "_execute_collection should have been called"
 
 
 def test_iac_apply_gate_aborts(monkeypatch):
