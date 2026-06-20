@@ -1,0 +1,848 @@
+{
+"100% Print": {
+"0": "Purchases"
+},
+"24S": {
+"0": "Purchases",
+"1": "__UNMAPPED__",
+"2": "Custom 1",
+"3": "Organic search visits (custom conv meta)"
+},
+"900.care": {
+"0": "Purchases",
+"2": "__UNMAPPED__"
+},
+"AG2R La Mondiale": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"AMV Assurance": {
+"0": "Leads"
+},
+"Absolut Cashmere": {
+"0": "Purchases",
+"2": "Initiate checkouts"
+},
+"Acquisit": {
+"0": "__UNMAPPED__"
+},
+"Anacours": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__",
+"5": "__UNMAPPED__",
+"6": "__UNMAPPED__",
+"7": "__UNMAPPED__",
+"8": "__UNMAPPED__",
+"9": "__UNMAPPED__"
+},
+"Aquitaine containers": {
+"0": "Leads"
+},
+"Arrago": {
+"0": "Sales Qualified Leads",
+"1": "__CONFLICT__",
+"2": "__CONFLICT__",
+"3": "__UNMAPPED__"
+},
+"Atelier Box": {
+"0": "__UNMAPPED__",
+"4": "__UNMAPPED__"
+},
+"Audilo": {
+"0": "__UNMAPPED__"
+},
+"BYmyCAR": {
+"0": "__CONFLICT__",
+"7": "Custom 7",
+"15": "Custom 15"
+},
+"Balto": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Bambinos": {
+"0": "Leads"
+},
+"Be Radiance": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Belveo": {
+"0": "Purchases",
+"2": "Leads",
+"3": "Marketing Qualified Leads",
+"4": "Offline sales"
+},
+"BeneBono": {
+"0": "Purchases",
+"1": "__CONFLICT__",
+"2": "__CONFLICT__",
+"3": "Custom 3",
+"5": "Custom 5"
+},
+"Biosyl": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__"
+},
+"Bonsoirs": {
+"0": "__UNMAPPED__"
+},
+"Braxton": {
+"0": "Leads",
+"2": "Custom 1",
+"3": "Custom 2"
+},
+"Butt Butter": {
+"0": "__UNMAPPED__"
+},
+"Cambox": {
+"0": "__UNMAPPED__"
+},
+"Canopea Paris": {
+"0": "Purchases"
+},
+"CapCar": {
+"0": "__CONFLICT__",
+"1": "Content views OR View Item",
+"2": "Leads",
+"3": "Sales Qualified Leads"
+},
+"Capitole Energy": {
+"0": "Leads"
+},
+"Ceercle": {
+"0": "__UNMAPPED__"
+},
+"Cheerz": {
+"0": "__UNMAPPED__"
+},
+"Chilowé": {
+"0": "Marketing Qualified Leads"
+},
+"Cica Manuka": {
+"0": "Purchases",
+"2": "Initiate checkouts",
+"4": "Content views OR View Item"
+},
+"Cirque du Soleil": {
+"0": "Purchases",
+"1": "Purchases",
+"2": "Sign ups",
+"3": "__UNMAPPED__"
+},
+"Codexial": {
+"0": "__CONFLICT__",
+"2": "Initiate checkouts",
+"3": "Leads",
+"4": "Content views OR View Item"
+},
+"Colorbox": {
+"0": "Purchases"
+},
+"Comptastar": {
+"0": "Leads",
+"1": "Marketing Qualified Leads",
+"2": "Sales Qualified Leads",
+"3": "Offline sales"
+},
+"Cowool": {
+"0": "__UNMAPPED__"
+},
+"Dedikazio": {
+"0": "Marketing Qualified Leads"
+},
+"Demo Nanga": {
+"0": "Purchases",
+"1": "__CONFLICT__",
+"2": "__CONFLICT__",
+"3": "Content views OR View Item",
+"5": "Custom 5",
+"6": "Custom 3",
+"7": "__UNMAPPED__",
+"14": "__UNMAPPED__",
+"19": "Custom 3"
+},
+"Dermalogica": {
+"0": "Purchases"
+},
+"Detective Box": {
+"0": "__UNMAPPED__"
+},
+"Distingo Bank": {
+"0": "__CONFLICT__",
+"3": "Custom 3",
+"4": "Custom 2",
+"5": "Custom 1",
+"6": "Leads",
+"7": "Custom 1"
+},
+"Dougs": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "Custom 2",
+"4": "Custom 4",
+"5": "Custom 5"
+},
+"Dualsun": {
+"0": "__UNMAPPED__"
+},
+"Ecopia": {
+"0": "__CONFLICT__",
+"1": "Leads"
+},
+"Elmy": {
+"0": "__UNMAPPED__"
+},
+"En Voiture Simone (EVS)": {
+"0": "Purchases",
+"1": "Custom 1",
+"2": "Custom 2",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__",
+"5": "__UNMAPPED__",
+"6": "__UNMAPPED__",
+"8": "__UNMAPPED__",
+"9": "__UNMAPPED__"
+},
+"Enlaps": {
+"0": "__CONFLICT__",
+"1": "Purchases"
+},
+"Everping": {
+"0": "Leads",
+"1": "Custom 1"
+},
+"Exaprint": {
+"0": "Purchases",
+"1": "Custom 1"
+},
+"Father and Sons": {
+"0": "Purchases",
+"1": "__CONFLICT__",
+"2": "Custom 1"
+},
+"Fauré Le Page": {
+"0": "Purchases",
+"1": "Content views OR View Item",
+"2": "Custom 1"
+},
+"Felicity (Otium)": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Figaret": {
+"0": "Purchases",
+"1": "__UNMAPPED__",
+"2": "Offline sales"
+},
+"Fleex": {
+"0": "__UNMAPPED__"
+},
+"France Toner": {
+"0": "Purchases"
+},
+"FranginFrangine": {
+"0": "__UNMAPPED__"
+},
+"Free": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__"
+},
+"Funkie": {
+"0": "Purchases",
+"1": "Sign ups"
+},
+"G-Heat": {
+"0": "Purchases",
+"14": "Add to cart",
+"16": "Content views OR View Item",
+"17": "Purchases"
+},
+"Gamin Tout Terrain": {
+"0": "__CONFLICT__",
+"1": "Add to cart"
+},
+"Gestion immobilière Walter inc.": {
+"0": "__CONFLICT__",
+"1": "Custom 2",
+"2": "Custom 3",
+"3": "Custom 4",
+"4": "Custom 5",
+"5": "Custom 6",
+"6": "Custom 7",
+"7": "Custom 8",
+"8": "__UNMAPPED__",
+"9": "Custom 10",
+"10": "Custom 11"
+},
+"Goodiespub": {
+"3": "Custom 3",
+"0": "Purchases",
+"2": "Marketing Qualified Leads",
+"1": "Custom 1"
+},
+"GreenGo": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Groover": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Hapni": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__"
+},
+"Hiprof": {
+"0": "__UNMAPPED__"
+},
+"HomeExchange": {
+"0": "__CONFLICT__",
+"1": "Purchases",
+"2": "__CONFLICT__",
+"3": "Sign ups",
+"5": "__UNMAPPED__"
+},
+"Horace": {
+"0": "__UNMAPPED__"
+},
+"Hosman": {
+"0": "__UNMAPPED__"
+},
+"Hugy": {
+"0": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__"
+},
+"Hydratis": {
+"0": "__UNMAPPED__"
+},
+"INGA": {
+"0": "__UNMAPPED__"
+},
+"Inoui Editions": {
+"0": "Purchases",
+"1": "Initiate checkouts",
+"2": "Leads"
+},
+"Inter Invest": {
+"0": "Leads"
+},
+"Inter Invest Outre Mer": {
+"0": "Marketing Qualified Leads"
+},
+"Inty": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__"
+},
+"Investissement Locatif": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"5": "__UNMAPPED__",
+"6": "__UNMAPPED__",
+"7": "__UNMAPPED__"
+},
+"Iskn": {
+"0": "__UNMAPPED__"
+},
+"JP Océan": {
+"0": "Leads"
+},
+"Jerome Dreyfuss": {
+"0": "Purchases",
+"2": "__UNMAPPED__"
+},
+"Jiliti": {
+"0": "__CONFLICT__"
+},
+"Jimmy Fairly": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__",
+"5": "__UNMAPPED__"
+},
+"Jott": {
+"0": "__UNMAPPED__"
+},
+"Kazidomi": {
+"0": "__UNMAPPED__"
+},
+"Kipli": {
+"0": "__UNMAPPED__"
+},
+"Komilfo": {
+"0": "__UNMAPPED__"
+},
+"LA Bruket": {
+"0": "Purchases"
+},
+"La Cheese Experience": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"La retraite en clair": {
+"0": "Marketing Qualified Leads",
+"2": "Content views OR View Item",
+"3": "Content views OR View Item",
+"4": "Custom 4",
+"5": "Content views OR View Item"
+},
+"Le Slip Français": {
+"0": "Purchases"
+},
+"Leet Design": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Les Tricots Marcel": {
+"0": "__UNMAPPED__"
+},
+"Les petits culottés": {
+"0": "Purchases",
+"1": "Purchases",
+"2": "Purchases",
+"3": "Purchases",
+"4": "Purchases",
+"7": "Purchases",
+"10": "__UNMAPPED__",
+"11": "__UNMAPPED__",
+"13": "__UNMAPPED__",
+"14": "__UNMAPPED__",
+"17": "__UNMAPPED__",
+"18": "__UNMAPPED__"
+},
+"Let's Tolk": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__"
+},
+"LocaBoat Group": {
+"0": "Custom 4",
+"1": "Add to cart",
+"2": "Initiate checkouts",
+"3": "Custom 3",
+"4": "Purchases",
+"5": "Leads",
+"6": "Leads",
+"7": "Custom 1",
+"8": "Sign ups",
+"9": "Custom 2",
+"10": "Organic search visits (custom conv meta)",
+"11": "Paid search visits (custom conv meta)"
+},
+"Lunii": {
+"0": "Purchases",
+"1": "Custom 1",
+"2": "Custom 2",
+"3": "Custom 3",
+"4": "Custom 4",
+"5": "Custom 5",
+"6": "Custom 5",
+"7": "Custom 6",
+"8": "Search visits (combo organic + sea custom conv meta)",
+"9": "Custom 7",
+"10": "Custom 8",
+"11": "Custom 9",
+"12": "Custom 10",
+"13": "Custom 11",
+"14": "Custom 12",
+"15": "__UNMAPPED__"
+},
+"Lutèce Cosmetics": {
+"0": "Purchases",
+"2": "Initiate checkouts",
+"5": "__UNMAPPED__"
+},
+"Madame d'Alexis": {
+"0": "Purchases"
+},
+"Maison Kitsune": {
+"0": "__UNMAPPED__"
+},
+"Manucurist": {
+"0": "Purchases"
+},
+"Mavala": {
+"0": "Purchases",
+"5": "__UNMAPPED__"
+},
+"Memo Bank": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"3": "__UNMAPPED__"
+},
+"Merci Walter": {
+"0": "Purchases",
+"2": "Initiate checkouts",
+"3": "__CONFLICT__"
+},
+"Modz": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Montblanc": {
+"0": "__UNMAPPED__"
+},
+"Morning": {
+"0": "Leads",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__",
+"5": "__UNMAPPED__",
+"6": "__UNMAPPED__",
+"7": "__UNMAPPED__",
+"8": "__UNMAPPED__",
+"9": "__UNMAPPED__",
+"10": "__UNMAPPED__",
+"11": "__UNMAPPED__",
+"12": "__UNMAPPED__"
+},
+"My Big Bang": {
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__"
+},
+"My Blend": {
+"0": "Purchases",
+"1": "Leads"
+},
+"Naali": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__"
+},
+"Naitways": {
+"0": "Leads",
+"2": "Leads",
+"3": "Leads",
+"4": "Leads",
+"5": "Leads",
+"6": "Leads",
+"7": "Leads",
+"8": "Leads",
+"9": "Leads",
+"10": "Leads",
+"11": "Leads",
+"12": "Leads"
+},
+"Neveo": {
+"0": "__UNMAPPED__"
+},
+"Nonna Lab": {
+"0": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"4": "__UNMAPPED__"
+},
+"Nora Beauty": {
+"0": "__UNMAPPED__"
+},
+"Néo Viager": {
+"0": "Marketing Qualified Leads"
+},
+"OMAJ": {
+"0": "__UNMAPPED__"
+},
+"Oli's Lab": {
+"0": "Purchases"
+},
+"Opla": {
+"0": "__UNMAPPED__"
+},
+"Orisha": {
+"0": "__UNMAPPED__"
+},
+"Osée": {
+"0": "Purchases",
+"2": "__UNMAPPED__"
+},
+"PF - Saint Gobain": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__",
+"5": "__UNMAPPED__"
+},
+"Passage du désir": {
+"0": "__UNMAPPED__"
+},
+"Païdou": {
+"0": "__UNMAPPED__"
+},
+"Perifit": {
+"0": "Purchases"
+},
+"Petit Picotin": {
+"0": "Purchases"
+},
+"Polène": {
+"0": "Purchases",
+"1": "Custom 1",
+"2": "Purchases",
+"7": "__UNMAPPED__"
+},
+"Poupette": {
+"0": "__UNMAPPED__"
+},
+"Pro Nutrition": {
+"0": "Purchases",
+"1": "Custom 1",
+"3": "Custom 2"
+},
+"Proteogenix": {
+"0": "__UNMAPPED__"
+},
+"Pulse Protein": {
+"0": "Purchases"
+},
+"Quitoque": {
+"0": "Purchases",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__",
+"5": "__UNMAPPED__",
+"6": "__UNMAPPED__",
+"7": "__UNMAPPED__"
+},
+"Quiz Room": {
+"0": "Leads",
+"1": "__CONFLICT__",
+"2": "Leads",
+"3": "Leads",
+"4": "Custom 4"
+},
+"Ray Studios": {
+"0": "Purchases"
+},
+"Rayon Coworking": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__",
+"5": "__UNMAPPED__",
+"6": "__UNMAPPED__",
+"7": "__UNMAPPED__",
+"8": "__UNMAPPED__"
+},
+"Redesk": {
+"0": "Add to cart",
+"1": "Purchases",
+"2": "Initiate checkouts",
+"3": "Leads",
+"4": "Custom 1"
+},
+"Reno": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"3": "__UNMAPPED__"
+},
+"Reputation": {
+"0": "Leads",
+"1": "__CONFLICT__",
+"2": "Leads",
+"3": "Leads"
+},
+"Richardson": {
+"1": "Leads",
+"2": "Custom 2",
+"3": "Custom 3",
+"4": "Leads"
+},
+"Rivadouce": {
+"0": "Purchases",
+"1": "__CONFLICT__",
+"2": "__CONFLICT__",
+"3": "Content views OR View Item"
+},
+"Rue du commerce": {
+"0": "__UNMAPPED__"
+},
+"SBG Systems": {
+"0": "Leads",
+"1": "Custom 1"
+},
+"Sami.eco": {
+"0": "__CONFLICT__"
+},
+"Shining": {
+"0": "Purchases"
+},
+"Shopinvest": {
+"0": "Purchases",
+"1": "Custom 1",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__"
+},
+"Smile and Pay": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"3": "__UNMAPPED__",
+"4": "__UNMAPPED__",
+"5": "__UNMAPPED__",
+"6": "__UNMAPPED__",
+"7": "__UNMAPPED__",
+"8": "__UNMAPPED__",
+"9": "__UNMAPPED__",
+"10": "__UNMAPPED__",
+"11": "__UNMAPPED__",
+"12": "__UNMAPPED__",
+"15": "__UNMAPPED__"
+},
+"Sober Spirits": {
+"0": "Purchases"
+},
+"Solarock": {
+"0": "Leads"
+},
+"Spark": {
+"0": "Leads"
+},
+"Sports d'époque": {
+"0": "Purchases"
+},
+"Steel Shed Solutions": {
+"0": "Leads",
+"1": "Purchases"
+},
+"Still & Slow": {
+"0": "Purchases"
+},
+"Superdiet": {
+"0": "Purchases"
+},
+"Séfia": {
+"0": "Purchases"
+},
+"Sélection M": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Tantor": {
+"0": "__UNMAPPED__"
+},
+"The Cool Republic": {
+"0": "__UNMAPPED__"
+},
+"Timeleft": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Toploc": {
+"0": "Purchases",
+"1": "Leads"
+},
+"Totemia": {
+"0": "__CONFLICT__",
+"1": "__CONFLICT__",
+"2": "__CONFLICT__"
+},
+"Tradis": {
+"0": "Purchases",
+"1": "Leads",
+"2": "Leads",
+"3": "Leads",
+"7": "Custom 1"
+},
+"Treezor": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"3": "__UNMAPPED__"
+},
+"Trustpair": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__",
+"5": "__UNMAPPED__",
+"6": "__UNMAPPED__",
+"8": "__UNMAPPED__"
+},
+"TuneCore": {
+"0": "Purchases",
+"1": "Sign ups"
+},
+"U2P": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "Content views OR View Item",
+"3": "Leads",
+"4": "__CONFLICT__",
+"5": "Custom 1"
+},
+"Vestiaire Collective": {
+"0": "Purchases",
+"1": "Sign ups",
+"2": "Custom 1",
+"3": "Custom 2",
+"4": "Custom 3"
+},
+"Violette_FR": {
+"0": "Purchases"
+},
+"Virgil": {
+"0": "Sign ups",
+"1": "Leads",
+"2": "Sales Qualified Leads",
+"3": "Custom 1",
+"4": "Custom 2",
+"5": "Custom 3",
+"6": "Organic search visits (custom conv meta)",
+"7": "Paid search visits (custom conv meta)",
+"8": "Custom 4"
+},
+"Walter": {
+"0": "__CONFLICT__",
+"2": "Content views OR View Item"
+},
+"Welcome to the Jungle": {
+"0": "__CONFLICT__",
+"1": "Leads",
+"2": "__UNMAPPED__",
+"3": "Sign ups",
+"5": "__CONFLICT__"
+},
+"Wonderbox": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__"
+},
+"Wup Networking": {
+"0": "__UNMAPPED__",
+"1": "__UNMAPPED__",
+"2": "__UNMAPPED__"
+},
+"Yooji": {
+"0": "Purchases",
+"1": "__CONFLICT__",
+"2": "Custom 3",
+"3": "__CONFLICT__",
+"5": "Custom 2",
+"6": "__UNMAPPED__",
+"7": "__UNMAPPED__"
+},
+"Zefir": {
+"0": "__UNMAPPED__"
+},
+"Zenchef": {
+"0": "Leads",
+"4": "Marketing Qualified Leads",
+"5": "Offline sales"
+},
+"Zeplug": {
+"0": "Leads",
+"1": "Custom 1"
+}
+}
