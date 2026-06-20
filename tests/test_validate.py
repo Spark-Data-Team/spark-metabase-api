@@ -109,3 +109,22 @@ def test_check_differential():
     assert any(f.level == "warn" and "sum(v)" in f.message for f in fs)
     fs2 = V.check_differential("t", before, drift, mode="identical")
     assert any(f.level == "error" for f in fs2)
+
+
+def test_gate_and_guarded_apply():
+    # gate: a structurally broken unit short-circuits (no execution attempted)
+    broken = V.CardUnit("c/bad", {"type": "native", "native": {"query": "x"}})
+    g = V.gate(ExecClient(), [broken], execute=True)
+    assert not g.ok() and [f.check for f in g.findings] == ["structure"]
+
+    # guarded_apply: gate errors -> mutate_fn NOT called
+    calls = []
+    rep = V.guarded_apply(ExecClient(), [broken], lambda: calls.append(1),
+                          differential="off", force=False, execute=False)
+    assert calls == [] and not rep.ok()
+
+    # force=True runs mutate_fn despite errors
+    calls2 = []
+    V.guarded_apply(ExecClient(), [broken], lambda: calls2.append(1),
+                    differential="off", force=True, execute=False)
+    assert calls2 == [1]

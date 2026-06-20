@@ -180,6 +180,54 @@ def _signature(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {"row_count": len(rows), "columns": cols, "sums": sums}
 
 
+def gate(client, units, execute=True) -> Report:
+    report = Report()
+    for u in units:
+        s = check_structure(u)
+        report.add(s)
+        if s.level == "error":
+            continue
+        ref_findings = check_refs(client, u)
+        for f in ref_findings:
+            report.add(f)
+        if any(f.level == "error" for f in ref_findings):
+            continue
+        if execute:
+            report.add(check_execution(client, u))
+    return report
+
+
+def guarded_apply(client, units, mutate_fn, differential="monitor",
+                  force=False, execute=True) -> Report:
+    report = Report()
+    baselines: Dict[str, List[Dict[str, Any]]] = {}
+    if differential != "off":
+        for u in units:
+            if u.live_card_id is not None:
+                rows, err = _execute_unit(client, u)
+                if not err:
+                    baselines[u.target] = rows
+    g = gate(client, units, execute=execute)
+    report.findings.extend(g.findings)
+    if g.errors() and not force:
+        report.add(Finding("apply", "gate", "error",
+                           "aborted: pre-apply errors, nothing mutated"))
+        return report
+    mutate_fn()
+    if differential != "off":
+        mode = "identical" if differential == "identical" else "monitor"
+        for u in units:
+            if u.target in baselines:
+                after, err = _execute_unit(client, u)
+                if err:
+                    report.add(Finding(u.target, "differential", "error",
+                        "post-apply query failed: {}".format(err)))
+                    continue
+                for f in check_differential(u.target, baselines[u.target], after, mode=mode):
+                    report.add(f)
+    return report
+
+
 def check_differential(target, before, after, mode="monitor", tolerance=0.0) -> List[Finding]:
     """Compare two result sets (before/after).
     mode="identical" => deltas are errors; mode="monitor" => deltas are warns.
