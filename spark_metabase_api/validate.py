@@ -166,3 +166,47 @@ def check_execution(client, unit: "CardUnit") -> Finding:
             return Finding(unit.target, "execution", "warn",
                            "missing expected columns: {}".format(missing))
     return Finding(unit.target, "execution", "ok", "{} rows".format(len(rows)))
+
+
+def _signature(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Compute a signature of row set: row count, columns, and sums of numeric columns.
+    A column is numeric only if all non-null values are int/float and not bool."""
+    cols = list(rows[0].keys()) if rows else []
+    sums: Dict[str, float] = {}
+    for c in cols:
+        vals = [r.get(c) for r in rows if r.get(c) is not None]
+        if vals and all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in vals):
+            sums[c] = sum(vals)
+    return {"row_count": len(rows), "columns": cols, "sums": sums}
+
+
+def check_differential(target, before, after, mode="monitor", tolerance=0.0) -> List[Finding]:
+    """Compare two result sets (before/after).
+    mode="identical" => deltas are errors; mode="monitor" => deltas are warns.
+    tolerance: fractional threshold for numeric sums (absolute/denom > tolerance)."""
+    sb, sa = _signature(before), _signature(after)
+    level = "error" if mode == "identical" else "warn"
+    findings: List[Finding] = []
+
+    if sb["row_count"] != sa["row_count"]:
+        findings.append(Finding(target, "differential", level,
+            "row count {} -> {}".format(sb["row_count"], sa["row_count"]),
+            before=sb["row_count"], after=sa["row_count"]))
+
+    if set(sb["columns"]) != set(sa["columns"]):
+        findings.append(Finding(target, "differential", level, "columns changed",
+            before=sb["columns"], after=sa["columns"]))
+
+    for c, bsum in sb["sums"].items():
+        asum = sa["sums"].get(c)
+        if asum is None:
+            continue
+        denom = abs(bsum) or 1.0
+        if abs(asum - bsum) / denom > tolerance:
+            findings.append(Finding(target, "differential", level,
+                "sum({}) {} -> {}".format(c, bsum, asum), before=bsum, after=asum))
+
+    if not findings:
+        findings.append(Finding(target, "differential", "ok", "no significant change"))
+
+    return findings

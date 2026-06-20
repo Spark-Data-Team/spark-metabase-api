@@ -93,3 +93,19 @@ def test_check_execution():
     saved = ExecClient(card_rows=[{"n": 1}])
     su = V.CardUnit("card#5", {"database": 1, "type": "native", "native": {"query": "x"}}, live_card_id=5)
     assert V.check_execution(saved, su).level == "ok"
+
+
+def test_check_differential():
+    before = [{"k": "a", "v": 10}, {"k": "b", "v": 20}]
+    same = [{"k": "a", "v": 10}, {"k": "b", "v": 20}]
+    assert all(f.level == "ok" for f in V.check_differential("t", before, same, mode="identical"))
+
+    dropped = [{"k": "a", "v": 10}]
+    fs = V.check_differential("t", before, dropped, mode="identical")
+    assert any(f.level == "error" and "row count" in f.message for f in fs)
+
+    drift = [{"k": "a", "v": 10}, {"k": "b", "v": 25}]
+    fs = V.check_differential("t", before, drift, mode="monitor")
+    assert any(f.level == "warn" and "sum(v)" in f.message for f in fs)
+    fs2 = V.check_differential("t", before, drift, mode="identical")
+    assert any(f.level == "error" for f in fs2)
