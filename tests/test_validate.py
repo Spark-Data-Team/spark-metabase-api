@@ -55,3 +55,17 @@ def test_check_structure():
     assert V.check_structure(empty).level == "error"
     bad_type = V.CardUnit("c/D", {"database": 1, "type": "weird"})
     assert V.check_structure(bad_type).level == "error"
+
+
+def test_check_refs():
+    client = FakeClient({9: {"archived": False}})  # card 9 exists; 99 does not
+    src_ok = V.CardUnit("c/A", {"database": 1, "type": "query",
+                                "query": {"source-table": "card__9"}})
+    assert all(f.level != "error" for f in V.check_refs(client, src_ok))
+    src_bad = V.CardUnit("c/B", {"database": 1, "type": "query",
+                                 "query": {"source-table": "card__99"}})
+    assert any(f.level == "error" for f in V.check_refs(client, src_bad))
+    ff_bad = V.CardUnit("c/C", {"database": 1, "type": "native", "native": {
+        "query": "SELECT 1", "template-tags": {
+            "x": {"values_source_config": {"card_id": 99}}}}})
+    assert any(f.level == "error" for f in V.check_refs(client, ff_bad))

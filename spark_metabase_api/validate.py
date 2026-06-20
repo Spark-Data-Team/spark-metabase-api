@@ -80,6 +80,31 @@ def check_structure(unit: "CardUnit") -> Finding:
     return Finding(unit.target, "structure", "ok", "well-formed")
 
 
+def _card_exists(client, card_id: int) -> bool:
+    card = client.get("/api/card/{}".format(card_id))
+    return bool(card) and not card.get("archived")
+
+
+def check_refs(client, unit: "CardUnit") -> List[Finding]:
+    findings: List[Finding] = []
+    dq = unit.dataset_query
+    if dq.get("type") == "query":
+        src = (dq.get("query") or {}).get("source-table")
+        if isinstance(src, str) and src.startswith("card__"):
+            cid = int(src.split("__")[1])
+            if not _card_exists(client, cid):
+                findings.append(Finding(unit.target, "refs", "error",
+                    "source card {} not found / archived".format(cid)))
+    for tag in ((dq.get("native") or {}).get("template-tags") or {}).values():
+        cid = (tag.get("values_source_config") or {}).get("card_id")
+        if cid and not _card_exists(client, cid):
+            findings.append(Finding(unit.target, "refs", "error",
+                "field-filter source card {} not found / archived".format(cid)))
+    if not findings:
+        findings.append(Finding(unit.target, "refs", "ok", "refs resolve"))
+    return findings
+
+
 @dataclass
 class Report:
     findings: List[Finding] = field(default_factory=list)
