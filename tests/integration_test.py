@@ -139,12 +139,25 @@ def phase1_readonly(mb: Metabase_API, sample_collection: Optional[str]) -> None:
     _ok("search('a') returned {} items".format(len(results)))
 
     dashboards = [r for r in results if r.get("model") == "dashboard"]
+    card_id: Optional[int] = None
     if dashboards:
         dash_id = dashboards[0]["id"]
         cards = mb.get_dashboard_question_ids(dashboard_id=dash_id)
         _ok("get_dashboard_question_ids({}) -> {} cards".format(dash_id, len(cards)))
+        if cards:
+            card_id = cards[0]
     else:
         _skip("get_dashboard_question_ids: no dashboard surfaced by search")
+
+    # Validation smoke (read-only): a known-good card must pass the gate.
+    from spark_metabase_api import validate as V  # noqa: PLC0415
+    if card_id:
+        report = V.gate(mb, [V.unit_from_card_id(mb, card_id)], execute=True)
+        print(report.render())
+        assert report.ok(), "validation gate failed on a known-good card"
+        _ok("validate.gate passed on card#{}".format(card_id))
+    else:
+        _skip("validate.gate smoke: no card id available (no dashboard with cards found)")
 
     if sample_collection is None:
         _skip("iac.export idempotency: no --collection passed")
