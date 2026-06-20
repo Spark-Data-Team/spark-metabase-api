@@ -3,6 +3,58 @@ from typing import Any, Dict, List, Optional
 
 
 @dataclass
+class CardUnit:
+    target: str
+    dataset_query: Dict[str, Any] = field(default_factory=dict)
+    display: Optional[str] = None
+    visualization_settings: Optional[Dict[str, Any]] = None
+    live_card_id: Optional[int] = None
+    expected_columns: Optional[List[str]] = None
+    metric_override: Optional[Dict[str, Any]] = None
+
+
+def units_from_spec(spec) -> List[CardUnit]:
+    units: List[CardUnit] = []
+
+    def walk(coll, path):
+        for card in coll.cards:
+            defn = card.definition or {}
+            units.append(CardUnit(
+                target=path + "/" + card.name,
+                dataset_query=defn.get("dataset_query") or {},
+                display=defn.get("display"),
+                visualization_settings=defn.get("visualization_settings"),
+            ))
+        for sub in coll.collections:
+            walk(sub, path + "/" + sub.name)
+
+    walk(spec, spec.name)
+    return units
+
+
+def unit_from_payload(target: str, payload: Dict[str, Any]) -> CardUnit:
+    return CardUnit(
+        target=target,
+        dataset_query=payload.get("dataset_query") or {},
+        display=payload.get("display"),
+        visualization_settings=payload.get("visualization_settings"),
+    )
+
+
+def unit_from_card_id(client, card_id: int) -> CardUnit:
+    card = client.get("/api/card/{}".format(card_id))
+    if not card:
+        raise ValueError("card {} not found".format(card_id))
+    return CardUnit(
+        target="card#{}".format(card_id),
+        dataset_query=card.get("dataset_query") or {},
+        display=card.get("display"),
+        visualization_settings=card.get("visualization_settings"),
+        live_card_id=card_id,
+    )
+
+
+@dataclass
 class Finding:
     target: str
     check: str
