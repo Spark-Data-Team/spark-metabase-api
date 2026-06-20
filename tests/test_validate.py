@@ -128,3 +128,21 @@ def test_gate_and_guarded_apply():
     V.guarded_apply(ExecClient(), [broken], lambda: calls2.append(1),
                     differential="off", force=True, execute=False)
     assert calls2 == [1]
+
+
+def test_iac_apply_gate_aborts(monkeypatch):
+    from spark_metabase_api import iac, validate as V
+    spec = iac.spec_from_dict({"name": "Acme", "cards": [{"name": "Bad",
+        "definition": {"dataset_query": {"type": "native", "native": {"query": "x"}}}}]})  # no database -> structure error
+
+    called = {"executed": False}
+    monkeypatch.setattr(iac, "_execute_collection",
+                        lambda *a, **k: called.__setitem__("executed", True))
+    monkeypatch.setattr(iac, "plan", lambda *a, **k: iac.Plan())
+
+    try:
+        iac.apply(object(), spec, validate=True)
+        assert False, "expected ValidationError"
+    except V.ValidationError:
+        pass
+    assert called["executed"] is False  # gate aborted before mutation

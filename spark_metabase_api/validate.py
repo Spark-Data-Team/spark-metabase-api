@@ -136,6 +136,12 @@ class Report:
         return 1 if self.errors() else 0
 
 
+class ValidationError(Exception):
+    def __init__(self, report: "Report"):
+        self.report = report
+        super().__init__("validation failed:\n" + report.render())
+
+
 def _execute_unit(client, unit: "CardUnit"):
     """Run the unit's query. Returns (rows: list[dict], error: str|None)."""
     if unit.live_card_id is not None:
