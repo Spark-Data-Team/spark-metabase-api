@@ -121,3 +121,21 @@ migration/families.json
 migration/rename-snapshot-*.json
 migration/xplat-snapshot-*.json
 migration/prune-candidates-*.json
+migration/dupes-report-*.json
+migration/audit-findings-*.json
+migration/audit-cache/
+migration/archive-empty-collections-*.json
+migration/empty-collections-review-*.csv
+migration/archive-collections-*.json
+migration/archive-stale-cards-*.json
+migration/stale-cards-review-*.csv
+migration/swap-snapshot-*.json
+# Rapport d'audit : données live (noms de clients) — régénérable, non versionné par défaut
+docs/audits/
+# migration/ = runtime artifacts (snapshots, backups, before/after dumps, task SQL).
+# Ignore the data; keep the few real source files + the Airtable client mapping.
+migration/*
+!migration/*.py
+!migration/*.js
+!migration/*.yaml
+!migration/conv-client-mapping.json

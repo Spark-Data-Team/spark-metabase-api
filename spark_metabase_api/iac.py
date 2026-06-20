@@ -569,15 +569,22 @@ def _plan_collection(client, spec: CollectionSpec, parent_id: Optional[int],
 
 
 def apply(client, spec: CollectionSpec, parent_id: Optional[int] = None,
-          dry_run: bool = False) -> Plan:
+          dry_run: bool = False, validate: bool = False, force: bool = False) -> Plan:
     """Apply the spec to Metabase so the live state matches the spec.
 
     Returns the executed plan. With dry_run=True nothing is written and the
     returned plan is exactly what `plan(client, spec, parent_id)` would return.
+    With validate=True, runs the pre-apply gate before any mutation; raises
+    ValidationError if the gate reports errors (unless force=True).
     """
     p = plan(client, spec, parent_id=parent_id)
     if dry_run:
         return p
+    if validate:
+        from . import validate as _v
+        report = _v.gate(client, _v.units_from_spec(spec), execute=True)
+        if not report.ok() and not force:
+            raise _v.ValidationError(report)
     by_path = {a.path: a for a in p.actions}
     _execute_collection(client, spec, parent_id, parent_path="", by_path=by_path)
     return p
@@ -752,6 +759,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_apply.add_argument("--yes", action="store_true",
                          help="Skip the interactive confirmation")
 
+    p_val = sub.add_parser("validate", help="Validate a spec / collection / card before applying")
+    p_val.add_argument("target", help="spec path | collection id/name | card id")
+    p_val.add_argument("--no-execute", action="store_true",
+                       help="skip running queries (structure+refs smoke check only)")
+
     args = parser.parse_args(argv)
     client = _build_client(args)
 
@@ -782,6 +794,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             print("\nNothing to do.")
         return 0
+
+    if args.cmd == "validate":
+        from . import validate as _v
+        units = _v.resolve_cli_target(client, args.target)
+        report = _v.gate(client, units, execute=not args.no_execute)
+        print(report.render())
+        return report.exit_code()
 
     return 1
 

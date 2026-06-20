@@ -1,0 +1,56 @@
+# Manifeste de migration Phase 1 — collection 215 « 2. Generic Questions »
+# Restructure pure : créations / déplacements / renommages de COLLECTIONS.
+# Aucune carte n'est renommée ni archivée. « 18. Nouvelles Conversions » est exclue.
+
+families:
+  - key: ad_platforms
+    name: "Ad platforms"
+    description: "Questions spécifiques à une plateforme publicitaire ou un MMP"
+  - key: web_analytics
+    name: "Web & Analytics"
+    description: "Analytics web, e-commerce et SEO"
+  - key: benchmarks_strategy
+    name: "Benchmarks & Strategy"
+    description: "Benchmarks sectoriels, objectifs clients et planification"
+
+collection_moves:
+  # ex-« 01. Global » : renommée en place, reste à la racine de 215
+  - {id: 214,  new_parent: root,                new_name: "Cross-platform"}
+  # --- Ad platforms ---
+  - {id: 209,  new_parent: ad_platforms,        new_name: "Google Ads"}
+  - {id: 210,  new_parent: ad_platforms,        new_name: "Meta"}
+  - {id: 443,  new_parent: ad_platforms,        new_name: "Adjust"}
+  - {id: 5466, new_parent: ad_platforms,        new_name: "Amazon Ads"}
+  # --- Web & Analytics ---
+  - {id: 232,  new_parent: web_analytics,       new_name: "Google Analytics 4"}
+  - {id: 2301, new_parent: web_analytics,       new_name: "Shopify"}
+  - {id: 344,  new_parent: web_analytics,       new_name: "SEO"}
+  - {id: 6984, new_parent: web_analytics,       new_name: "Magento"}
+  # --- Benchmarks & Strategy ---
+  - {id: 9660, new_parent: benchmarks_strategy, new_name: "AI"}
+  - {id: 216,  new_parent: benchmarks_strategy, new_name: "Industry benchmarks"}
+  - {id: 346,  new_parent: benchmarks_strategy, new_name: "Client Goals"}
+  - {id: 4546, new_parent: benchmarks_strategy, new_name: "Brand Monitoring"}
+  - {id: 7680, new_parent: benchmarks_strategy, new_name: "Business Plan"}
+
+# Les 9 cartes de « To sort » -> Cross-platform (214) ou Industry benchmarks (216)
+card_filing:
+  45729: 214   # Branding vs engagement vs trafic
+  45730: 214   # Branding vs engagement vs trafic - Bar Chart
+  46851: 214   # Branding vs engagement vs trafic - Table
+  17923: 214   # Cac3
+  17922: 214   # Conv3
+  27619: 214   # Perifit_check  (carte de test client — à archiver hors Phase 1)
+  3102:  214   # ROAS by date, account_name
+  17511: 216   # Social ad performance agency benchmark (2 dimensions)
+  17512: 216   # Social video ad performance agency benchmark (2 dimensions)
+
+# Collections vides supprimées (vacuité revérifiée en live avant suppression)
+delete_empty:
+  - 211    # 04. Microsoft
+  - 545    # 09. Appsflyer
+  - 2202   # 10. Pinterest
+  - 7185   # 16. Spotify
+  - 2829   # 5. Correlation cost & key metrics  (sous Global)
+  - 1454   # Attribution windows  (sous Meta / 1. Campaign)
+  - 7252   # To sort  (après déplacement de ses 9 cartes)

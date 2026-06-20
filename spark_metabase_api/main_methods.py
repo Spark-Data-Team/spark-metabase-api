@@ -217,6 +217,24 @@ class Metabase_API:
         if data_format == "csv":
             return res.text.replace("null", "")
 
+    def run_query(self, dataset_query, parameters=None):
+        """Run an ad-hoc dataset_query (POST /api/dataset) and return parsed JSON.
+
+        dataset_query is the shape stored in a card's definition:
+            {"database": <id>, "type": "native"|"query", "native"|"query": {...}}
+
+        Note: native queries requiring template-tag/field-filter values are not
+        auto-defaulted in v1 (see spec §7) — a failing run surfaces as an execution error.
+        """
+        body = dict(dataset_query)
+        body["parameters"] = parameters or []
+        res = self.post("/api/dataset", "raw", json=body)
+        try:
+            return res.json()
+        except Exception:
+            return {"status": "failed", "error": "non-JSON response ({})".format(
+                getattr(res, "status_code", "?"))}
+
     def clone_card(
         self,
         card_id,
