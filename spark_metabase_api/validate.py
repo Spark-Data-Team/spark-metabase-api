@@ -134,3 +134,35 @@ class Report:
 
     def exit_code(self) -> int:
         return 1 if self.errors() else 0
+
+
+def _execute_unit(client, unit: "CardUnit"):
+    """Run the unit's query. Returns (rows: list[dict], error: str|None)."""
+    if unit.live_card_id is not None:
+        try:
+            rows = client.get_card_data(card_id=unit.live_card_id, data_format="json")
+        except Exception as e:
+            return [], str(e)
+        return rows or [], None
+    res = client.run_query(unit.dataset_query)
+    if not isinstance(res, dict) or res.get("status") == "failed" or res.get("error"):
+        err = res.get("error") if isinstance(res, dict) else "HTTP error"
+        return [], err or "query failed"
+    data = res.get("data") or {}
+    cols = [c.get("name") for c in (data.get("cols") or [])]
+    rows = [dict(zip(cols, r)) for r in (data.get("rows") or [])]
+    return rows, None
+
+
+def check_execution(client, unit: "CardUnit") -> Finding:
+    rows, error = _execute_unit(client, unit)
+    if error:
+        return Finding(unit.target, "execution", "error", "query failed: {}".format(error))
+    if not rows:
+        return Finding(unit.target, "execution", "warn", "query returned 0 rows")
+    if unit.expected_columns:
+        missing = [c for c in unit.expected_columns if c not in rows[0]]
+        if missing:
+            return Finding(unit.target, "execution", "warn",
+                           "missing expected columns: {}".format(missing))
+    return Finding(unit.target, "execution", "ok", "{} rows".format(len(rows)))

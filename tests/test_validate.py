@@ -69,3 +69,27 @@ def test_check_refs():
         "query": "SELECT 1", "template-tags": {
             "x": {"values_source_config": {"card_id": 99}}}}})
     assert any(f.level == "error" for f in V.check_refs(client, ff_bad))
+
+
+class ExecClient:
+    def __init__(self, dataset_result=None, card_rows=None):
+        self._ds = dataset_result; self._rows = card_rows
+    def run_query(self, dq, parameters=None): return self._ds
+    def get_card_data(self, card_id=None, data_format="json"): return self._rows
+
+def test_check_execution():
+    good = ExecClient(dataset_result={"status": "completed",
+        "data": {"cols": [{"name": "n"}], "rows": [[1], [2]]}})
+    u = V.CardUnit("c/A", {"database": 1, "type": "native", "native": {"query": "SELECT n"}})
+    f = V.check_execution(good, u)
+    assert f.level == "ok" and "2 rows" in f.message
+
+    failed = ExecClient(dataset_result={"status": "failed", "error": "SQL compilation error"})
+    assert V.check_execution(failed, u).level == "error"
+
+    empty = ExecClient(dataset_result={"status": "completed", "data": {"cols": [], "rows": []}})
+    assert V.check_execution(empty, u).level == "warn"
+
+    saved = ExecClient(card_rows=[{"n": 1}])
+    su = V.CardUnit("card#5", {"database": 1, "type": "native", "native": {"query": "x"}}, live_card_id=5)
+    assert V.check_execution(saved, su).level == "ok"
