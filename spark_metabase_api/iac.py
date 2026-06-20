@@ -759,6 +759,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     p_apply.add_argument("--yes", action="store_true",
                          help="Skip the interactive confirmation")
 
+    p_val = sub.add_parser("validate", help="Validate a spec / collection / card before applying")
+    p_val.add_argument("target", help="spec path | collection id/name | card id")
+    p_val.add_argument("--no-execute", action="store_true",
+                       help="skip running queries (structure+refs smoke check only)")
+
     args = parser.parse_args(argv)
     client = _build_client(args)
 
@@ -789,6 +794,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         else:
             print("\nNothing to do.")
         return 0
+
+    if args.cmd == "validate":
+        from . import validate as _v
+        units = _v.resolve_cli_target(client, args.target)
+        report = _v.gate(client, units, execute=not args.no_execute)
+        print(report.render())
+        return report.exit_code()
 
     return 1
 

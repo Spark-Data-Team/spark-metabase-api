@@ -130,6 +130,23 @@ def test_gate_and_guarded_apply():
     assert calls2 == [1]
 
 
+def test_resolve_cli_target_spec(tmp_path):
+    from spark_metabase_api import iac, validate as V
+    spec_file = tmp_path / "s.json"
+    iac.dump(iac.spec_from_dict({"name": "Acme", "cards": [{"name": "R",
+        "definition": {"dataset_query": {"database": 1, "type": "native",
+                                         "native": {"query": "SELECT 1"}}}}]}), str(spec_file))
+    units = V.resolve_cli_target(object(), str(spec_file))
+    assert len(units) == 1 and units[0].target == "Acme/R"
+
+def test_resolve_cli_target_card_id():
+    from spark_metabase_api import validate as V
+    client = FakeClient({4: {"dataset_query": {"database": 1, "type": "native",
+                                               "native": {"query": "x"}}}})
+    units = V.resolve_cli_target(client, "4")
+    assert units[0].live_card_id == 4
+
+
 def test_iac_apply_gate_aborts(monkeypatch):
     from spark_metabase_api import iac, validate as V
     spec = iac.spec_from_dict({"name": "Acme", "cards": [{"name": "Bad",

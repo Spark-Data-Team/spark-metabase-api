@@ -234,6 +234,16 @@ def guarded_apply(client, units, mutate_fn, differential="monitor",
     return report
 
 
+def resolve_cli_target(client, target: str) -> List["CardUnit"]:
+    import os
+    from . import iac
+    if target.lower().endswith((".yaml", ".yml", ".json")) and os.path.exists(target):
+        return units_from_spec(iac.load(target))
+    if target.isdigit():
+        return [unit_from_card_id(client, int(target))]
+    return units_from_spec(iac.export(client, target))
+
+
 def check_differential(target, before, after, mode="monitor", tolerance=0.0) -> List[Finding]:
     """Compare two result sets (before/after).
     mode="identical" => deltas are errors; mode="monitor" => deltas are warns.
