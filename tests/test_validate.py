@@ -44,3 +44,14 @@ def test_unit_from_card_id():
                              "display": "scalar"}})
     u = V.unit_from_card_id(client, 7)
     assert u.live_card_id == 7 and u.dataset_query["database"] == 1
+
+
+def test_check_structure():
+    ok = V.CardUnit("c/A", {"database": 1, "type": "native", "native": {"query": "SELECT 1"}})
+    assert V.check_structure(ok).level == "ok"
+    no_db = V.CardUnit("c/B", {"type": "native", "native": {"query": "SELECT 1"}})
+    assert V.check_structure(no_db).level == "error"
+    empty = V.CardUnit("c/C", {"database": 1, "type": "native", "native": {"query": ""}})
+    assert V.check_structure(empty).level == "error"
+    bad_type = V.CardUnit("c/D", {"database": 1, "type": "weird"})
+    assert V.check_structure(bad_type).level == "error"

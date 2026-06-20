@@ -64,6 +64,22 @@ class Finding:
     after: Any = None
 
 
+def check_structure(unit: "CardUnit") -> Finding:
+    dq = unit.dataset_query
+    if not isinstance(dq, dict) or "database" not in dq:
+        return Finding(unit.target, "structure", "error", "dataset_query missing 'database'")
+    qtype = dq.get("type")
+    if qtype == "native":
+        if not (dq.get("native") or {}).get("query"):
+            return Finding(unit.target, "structure", "error", "native query is empty")
+    elif qtype == "query":
+        if not dq.get("query"):
+            return Finding(unit.target, "structure", "error", "MBQL query is empty")
+    else:
+        return Finding(unit.target, "structure", "error", "unknown query type {!r}".format(qtype))
+    return Finding(unit.target, "structure", "ok", "well-formed")
+
+
 @dataclass
 class Report:
     findings: List[Finding] = field(default_factory=list)
