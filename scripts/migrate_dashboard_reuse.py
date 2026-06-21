@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 import conv_lib
 import bascule_lib
+from spark_metabase_api import validate as V
 from migrate_dashboard_full import connect, load_inputs, card_values, _dcs
 
 def _client_date_params(tags, client, window):
@@ -227,7 +228,8 @@ def main():
                     after = card_values(mb, newc_id, args.client, args.window)
                 if not before:
                     decision = "À VÉRIFIER (fenêtre de validation VIDE — aucune preuve)"
-                elif before != after:
+                elif any(f.level == "error" for f in
+                         V.check_values(card.get("name"), before, after, mode="identical")):
                     # la carte 11673 affiche-t-elle simplement des séries EN PLUS ?
                     # -> mapper les séries de l'ancienne par nature, masquer le reste
                     #    au niveau du dashcard, et comparer sur les séries affichées.
@@ -241,7 +243,8 @@ def main():
                         g = "week" if time_exception else None
                         b2 = card_cells(mb, cid, args.client, args.window, g, old_m)
                         a2 = card_cells(mb, newc_id, args.client, args.window, g, mapped)
-                        if b2 and b2 == a2:
+                        if b2 and all(f.level == "ok" for f in
+                                      V.check_values(card.get("name"), b2, a2, mode="identical")):
                             mask_keep = mapped
                         else:
                             decision = ("À DÉCIDER (valeurs ≠ même restreintes aux séries affichées : "

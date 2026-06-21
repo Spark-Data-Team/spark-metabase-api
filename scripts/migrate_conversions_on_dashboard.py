@@ -18,6 +18,7 @@ sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 from spark_metabase_api import Metabase_API
 from reorg_phase1 import _load_env
 import swap_lib, conv_lib
+from spark_metabase_api import validate as V
 
 MIG = REPO / "migration"
 
@@ -170,7 +171,7 @@ def main():
             _dc, _card, _new, _res, _oc, _ren = item
             before = card_values(mb, _card["id"], args.client, args.window)
             after = card_values(mb, _res["new_card_id"], args.client, args.window)
-            if before == after:
+            if all(f.level == "ok" for f in V.check_values(_card.get("name"), before, after, mode="identical")):
                 verified.append(item)
             else:
                 print(f"  ⚠️ NON migrée «{_card.get('name')}» — valeur avant/après différente "

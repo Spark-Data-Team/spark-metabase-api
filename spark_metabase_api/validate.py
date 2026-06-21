@@ -222,7 +222,7 @@ def gate(client, units, execute=True) -> Report:
 
 
 def guarded_apply(client, units, mutate_fn, differential="monitor",
-                  force=False, execute=True) -> Report:
+                  force=False, execute=True, tolerance=0.0) -> Report:
     report = Report()
     baselines: Dict[str, List[Dict[str, Any]]] = {}
     if differential != "off":
@@ -247,7 +247,7 @@ def guarded_apply(client, units, mutate_fn, differential="monitor",
                     report.add(Finding(u.target, "differential", "error",
                         "post-apply query failed: {}".format(err)))
                     continue
-                for f in check_differential(u.target, baselines[u.target], after, mode=mode):
+                for f in check_differential(u.target, baselines[u.target], after, mode=mode, tolerance=tolerance):
                     report.add(f)
     return report
 
@@ -309,3 +309,33 @@ def check_differential(target, before, after, mode="monitor", tolerance=0.0) -> 
         findings.append(Finding(target, "differential", "ok", "no significant change"))
 
     return findings
+
+
+def check_values(target, before, after, mode="monitor", tolerance=0.0) -> List[Finding]:
+    """Compare two sequences of scalar values (conv-migration's sorted/rounded
+    numeric-multiset convention). mode='identical' => a difference is an error;
+    mode='monitor' => a warn. tolerance=0.0 reproduces an exact `before != after`."""
+    level = "error" if mode == "identical" else "warn"
+    b, a = list(before or []), list(after or [])
+    if len(b) != len(a):
+        return [Finding(target, "values", level,
+            "value count {} -> {}".format(len(b), len(a)), before=len(b), after=len(a))]
+    is_num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    if all(is_num(x) for x in b) and all(is_num(x) for x in a):
+        diffs, first = 0, None
+        for x, y in zip(sorted(b), sorted(a)):
+            denom = abs(x) or 1.0
+            d = abs(y - x)
+            if d != d or d / denom > tolerance:  # NaN or beyond tolerance
+                diffs += 1
+                if first is None:
+                    first = (x, y)
+        if diffs:
+            return [Finding(target, "values", level,
+                "{}/{} values differ beyond tolerance, first {} -> {}".format(
+                    diffs, len(b), first[0], first[1]),
+                before=first[0], after=first[1])]
+    elif b != a:
+        return [Finding(target, "values", level, "values differ (non-numeric)",
+                        before=b, after=a)]
+    return [Finding(target, "values", "ok", "{} values, no change".format(len(b)))]
