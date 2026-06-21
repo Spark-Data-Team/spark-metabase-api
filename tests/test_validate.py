@@ -317,3 +317,38 @@ def test_resolve_cli_target_bad_spec_file(tmp_path):
     bad.write_text('{"not": "a spec"}')
     with pytest.raises(ValueError):
         V.resolve_cli_target(object(), str(bad))
+
+
+# --- check_values + guarded_apply tolerance (unify-differential) ---
+
+def test_check_values():
+    # order-agnostic multiset equality
+    assert all(f.level == "ok" for f in V.check_values("t", [1.0, 2.0], [2.0, 1.0], mode="identical"))
+    # length mismatch -> finding
+    assert any(f.level == "error" for f in V.check_values("t", [1.0], [1.0, 2.0], mode="identical"))
+    # numeric drift beyond tolerance
+    drift = V.check_values("t", [10.0, 20.0], [10.0, 25.0], mode="identical")
+    assert any(f.level == "error" and "differ" in f.message for f in drift)
+    # within tolerance -> ok
+    assert all(f.level == "ok" for f in V.check_values("t", [100.0], [100.05], mode="monitor", tolerance=0.001))
+    # monitor mode -> warn
+    assert any(f.level == "warn" for f in V.check_values("t", [100.0], [200.0], mode="monitor"))
+    # non-numeric exact compare
+    assert any(f.level == "error" for f in V.check_values("t", ["a", "b"], ["a", "c"], mode="identical"))
+
+
+def test_guarded_apply_forwards_tolerance():
+    """A within-tolerance numeric change must not raise a differential finding once tolerance is forwarded."""
+    seq = [[{"v": 100.0}], [{"v": 100.05}]]  # baseline, then post-mutate
+
+    class TolClient:
+        def __init__(self): self.n = 0
+        def get(self, ep, *a, **k): return {"archived": False}
+        def get_card_data(self, card_id=None, data_format="json"):
+            r = seq[0] if self.n == 0 else seq[1]; self.n += 1; return r
+        def run_query(self, dq, parameters=None):
+            return {"status": "completed", "data": {"cols": [{"name": "v"}], "rows": [[100.0]]}}
+
+    u = V.CardUnit("c/A", {"database": 1, "type": "native", "native": {"query": "x"}}, live_card_id=7)
+    rep = V.guarded_apply(TolClient(), [u], lambda: None, differential="monitor", execute=True, tolerance=0.001)
+    assert not any(f.check == "differential" and f.level in ("warn", "error") for f in rep.findings)
