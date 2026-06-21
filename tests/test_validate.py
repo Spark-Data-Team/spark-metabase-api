@@ -352,3 +352,14 @@ def test_guarded_apply_forwards_tolerance():
     u = V.CardUnit("c/A", {"database": 1, "type": "native", "native": {"query": "x"}}, live_card_id=7)
     rep = V.guarded_apply(TolClient(), [u], lambda: None, differential="monitor", execute=True, tolerance=0.001)
     assert not any(f.check == "differential" and f.level in ("warn", "error") for f in rep.findings)
+
+
+def test_check_values_matches_exact_inequality():
+    """conv-migration refactor relies on: check_values(identical) errors IFF before != after
+    (for the sorted numeric value-lists card_values/displayed_cells produce)."""
+    cases = [([1.0, 2.0], [1.0, 2.0]), ([1.0, 2.0], [2.0, 1.0]), ([1.0, 2.0], [1.0, 3.0]),
+             ([1.0], [1.0, 2.0]), ([1.0, 2.0, 3.0], [1.0, 2.0]), ([], [])]
+    for b, a in cases:
+        bs, as_ = sorted(b), sorted(a)
+        errored = any(f.level == "error" for f in V.check_values("t", bs, as_, mode="identical"))
+        assert errored == (bs != as_), "mismatch for {} vs {}".format(bs, as_)
