@@ -4,10 +4,12 @@
 
 ## 0. À lire (dans l'ordre)
 1. **Ce fichier.**
-2. `docs/conversion-migration-PROGRESS.md` — où on en est, par client (Iron Law).
-3. `docs/conversion-migration-clients.md` — détail vivant (§Étape 3 + « cartes partagées spéciales » + Iron Law + fixes outillage).
-4. `docs/conversion-migration-HANDOFF.md` — chaîne d'outils, pièges techniques.
-5. `memory/conv_migration_etape3.md` (+ `memory/conversion_migration.md` = log long).
+2. `docs/conversion-migration-PROGRESS.md` — où on en est, par client + lots parallèles (Iron Law).
+3. `docs/conversion-migration-ANOMALIES.md` — journal append-only des bugs trouvés + décisions user (lots 1 & 2).
+4. `docs/conversion-migration-PARALLEL.md` — recette du harnais orchestrateur + subagents.
+5. `docs/conversion-migration-clients.md` — détail vivant (§Étape 3 + « cartes partagées spéciales » + Iron Law).
+6. `docs/conversion-migration-HANDOFF.md` — chaîne d'outils, pièges techniques.
+7. `memory/conv_migration_etape3.md` (+ `memory/conversion_migration.md` = log long).
 
 ## 1. Objectif + LA RÈGLE
 Migrer A→Z **tous les clients actifs (~98)** : remplacer les conversions **positionnelles** (`CONVERSIONS`,
@@ -25,7 +27,25 @@ SHALLOW `is_deep_copy:false`). **Ancre `[conv-2026-06]`** en suffixe du nom. **M
 LIVE par client.** **Slots non mappés / conflits = STOP → Gaby** (on n'invente jamais la cible). Réponds au
 user en **français, simple et visuel** ; pas de commit sans demande.
 
-## 2. État au 2026-06-24
+## 2bis. MAJ 2026-06-26 — HARNAIS PARALLÈLE LANCÉ + OUTILLAGE DURCI (lire en premier)
+**Outillage commité** (branche `feat/conv-migration-tooling-hardening`, suite **204 tests verts**).
+2 lots de validation passés sur COPIES (collection **14016**) via subagents → merge central :
+- **Lot 1** : AMV Assurance (26424), Exaprint (26427) = **visible-100%** ; Be Radiance (26428),
+  Ecopia (26426) = ⏳ Gaby (slots non mappés/conflit, au CSV).
+- **Lot 2** : **Komilfo** (26458/26463) & **Osée** (26460/26465) = **visible-100%** ; Toploc (26457) &
+  Solarock (26459/26462) = résidu **table large** ; CapCar (26461/64/66) = ⏳ Gaby.
+- **8 bugs outillage corrigés** (cf. ANOMALIES) : swap None-dim, visualizer vide, préfixe [migré], titre
+  corrompu MAJ (`substitute_viz`), bascule `string/=`, titre générique→nommé, `render_ok` faux-positif,
+  **tables larges** (swap s'enclenche : old_vis vide → result_metadata, non-mappées masquées, bonus rempli).
+- **2 décisions user TRANCHÉES** : (1) tout **écart de valeur bloque → REVUE** (`--accept-diffs` ne force
+  plus ; la revue montre la colonne+chiffres, ex. Toploc « CONVERSIONS_1→CURRENT_LEADS 38 vs 25 »).
+  Routage : mapping vraiment différent → consultant ; bug data → user (= équipe data). (2) titre tuile
+  migrée = conversion nommée si titre générique, libellé métier préservé.
+- **À FAIRE ENSUITE** : prendre le **prochain lot (4-6 clients NON faits)** dans `migration/worklist.json`,
+  dérouler via la recette PARALLEL, valider lot par lot avec le user. Les tuiles « À REVOIR (écart valeur) »
+  → liste pour le user. Toploc slot 1 (Leads 36→23) en attente d'arbitrage data/consultant.
+
+## 2. État au 2026-06-24 (avant le harnais — historique)
 - **1 client complet** (Iron Law) : 100% Print. **2 dashboards true-100%** : copies 26127 (100% Print), 26197 (Cica Home).
 - Partiels (résidus conv sur l'ancien, à finir) : Braxton (26193), Absolut Cashmere (26164), Cica PMax (26198).
 - Archivés / à refaire en unités complètes : Cica Focus 6846 (#87), Cica Breakdowns 11249 (segment), Chilowé 21310/21311.
