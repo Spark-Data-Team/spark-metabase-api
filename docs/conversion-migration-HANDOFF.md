@@ -96,6 +96,17 @@ cf. `conversion-migration-clients.md` § LEÇON PERMISSIONS. À automatiser dans
   `utils.calendar.date` = field **419201**) + remplacer chaque `LATERAL(... metabase_filters.time_periods ...
   {{time_period}} ... LIMIT 1)` par `LATERAL(SELECT name FROM granularity LIMIT 1)`. `temporal_units` =
   `[day,week,month,year]` (comme l'ancien ; pas de quarter sauf besoin).
+- ⚠️ **CTE granularity = fichier `scripts/granularity_cte.sql`** (suivi git). `convert_generic_temporal.py` le
+  lit à l'import. **AVANT 2026-06-22 il lisait `/tmp/granularity_cte.sql`** (artefact volatil) → après vidage
+  de /tmp, `bascule --auto-prepare` crashait (`FileNotFoundError`) dès qu'une carte by-date devait être
+  convertie (corrigé : pointe désormais sur le fichier repo). Si la bascule crashe à l'import, vérifier ce fichier.
+- 🐛 **FIX 2026-06-23 — `LATERAL_RE` débordait sur les cartes à 2+ LATERAL.** La regex repérant le
+  `LATERAL (... metabase_filters.time_periods ...)` était en dotall `.*?` → si une carte avait un AUTRE LATERAL
+  avant (LATERAL brand `textual_boolean`, comparison_windows…), le match partait du 1er LATERAL et avalait la
+  frontière de CTE jusqu'au time_periods → un CTE aval disparaissait → `Object 'FINAL' does not exist`. Corrigé
+  en `[^()]*?` (ne traverse plus de parenthèse). **C'était la cause de la plupart des bascules « bloquées » sur
+  les cartes conversion by-date** (quasi toutes ont un LATERAL brand). Cartes à 1 seul LATERAL non affectées.
+  Témoin : #4854 → copie 49755 (collection témoins 14082), avant/après identique 4 granularités.
 - **Règle BRAND** (validée) : une campagne est « brand » si `campaign_type LIKE '%brand%'` **OU**
   `TRIM(LOWER(campaign_category)) = 'brand'` (égalité STRICTE — un LIKE attrape « Push Brand To Media » à tort).
   Appliquée à 1967 cartes de 11673 (0 régression). `conv_lib.fix_brand_clause`.

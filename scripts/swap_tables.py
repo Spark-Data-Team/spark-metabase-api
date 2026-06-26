@@ -54,7 +54,12 @@ DC_FIELDS = ("card_id", "row", "col", "size_x", "size_y", "series", "parameter_m
 
 def card_rows(mb, cid, params, dim_col):
     """{label_majuscule -> {COL: valeur}} ; exclut la ligne 'Total'. Alignement par
-    libellé insensible à la casse (ancien UPPER vs neuf INITCAP)."""
+    libellé insensible à la casse (ancien UPPER vs neuf INITCAP). dim_col=None
+    (dashcard sans colonne visible activée) → None : non alignable donc non vérifiable
+    → la carte n'est PAS swappée (reste sur l'ancien, signalée), au lieu de crasher
+    tout le swap du dashboard."""
+    if dim_col is None:
+        return None
     r = mb.post(f"/api/card/{cid}/query", json={"parameters": params}, timeout=300)
     if not isinstance(r, dict) or r.get("status") != "completed":
         return None
@@ -109,7 +114,12 @@ def main():
         old_vsettings = dc.get("visualization_settings") or {}
         old_tc = old_vsettings.get("table.columns") or []
         old_vis = [c["name"] for c in old_tc if c.get("enabled")]
-        old_dim = old_vis[0] if old_vis else None
+        # table SANS table.columns explicite -> elle affiche TOUTES ses colonnes. On part alors de ses
+        # colonnes de RÉSULTAT : les conversions du client sont mappées, les slots positionnels inutilisés
+        # restent non mappés et seront MASQUÉS (pas bloquants) -> « garder seulement les conv réelles ».
+        implicit_cols = not old_vis
+        if implicit_cols:
+            old_vis = [x["name"] for x in (old_card.get("result_metadata") or [])]
         old_titles = {k: v.get("column_title") for k, v in (old_vsettings.get("column_settings") or {}).items()
                       if v.get("column_title")}
         target = mb.get(f"/api/card/{target_id}")
@@ -122,10 +132,17 @@ def main():
             if cand and cand in new_cols:
                 m[col] = cand
                 unmapped.remove(col)
+        # dimension d'alignement = ancienne colonne mappant vers dim_new (sinon 1ère visible)
+        old_dim = next((k for k, v in m.items() if v == dim_new), old_vis[0] if old_vis else None)
 
         # --- vérification cellule par cellule, alignée par libellé, brand=yes (inerte) ---
         old_params = list(base) + [brand_yes]
         _, old_tags = conv_lib.native_and_tags(old_card)
+        # params NUMBER requis sans défaut (ex. 'bonus') -> valeur neutre 0, sinon la carte ne s'exécute
+        # pas et la vérif est impossible (le dashboard les fournit à l'usage).
+        for tname, t in (old_tags or {}).items():
+            if (t or {}).get("type") == "number" and (t or {}).get("default") in (None, ""):
+                old_params.append({"type": "number/=", "value": 0, "target": ["variable", ["template-tag", tname]]})
         if is_temporal:  # n'épingler la granularité que pour le tableau by-date
             tp = bascule_lib.time_param_payload(old_tags, "week")
             if tp:
@@ -155,8 +172,9 @@ def main():
             if extra_rows:
                 bad.append(("(lignes)", "(lignes)", f"écart de lignes: {extra_rows[:6]}", "", len(extra_rows)))
 
-        # blocage DUR : exécution KO ou colonnes non mappées (jamais contournable)
-        hard = unmapped or any(b[0] == "(exécution)" for b in bad)
+        # blocage DUR : exécution KO toujours ; colonnes non mappées seulement pour une table à colonnes
+        # CHOISIES (table implicite -> on MASQUE les non mappées = slots positionnels inutilisés).
+        hard = (bool(unmapped) and not implicit_cols) or any(b[0] == "(exécution)" for b in bad)
         value_diffs = [b for b in bad if b[0] != "(exécution)"]
         blocked = bool(hard) or (bool(value_diffs) and not args.accept_diffs)
         status = "OK" if not bad and not unmapped else ("FORCÉ" if (value_diffs and args.accept_diffs and not hard) else "PARTIEL")

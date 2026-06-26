@@ -414,6 +414,104 @@ def test_displayed_cells_restricts_and_sorts():
     assert 99.0 in conv_lib.displayed_cells(cols, rows, None)
 
 
+def test_split_pairs_single():
+    assert conv_lib.split_multiselect_pairs("Main conversion", "Purchases") == ([("Main conversion", "Purchases")], False)
+
+def test_split_pairs_equal_multi_positional():
+    pairs, amb = conv_lib.split_multiselect_pairs("Add to cart,3rd conversion", "Add to cart,Custom 2")
+    assert pairs == [("Add to cart", "Add to cart"), ("3rd conversion", "Custom 2")] and amb is False
+
+def test_split_pairs_type_without_new_type_is_unmapped_not_ambiguous():
+    assert conv_lib.split_multiselect_pairs("2nd conversion", "") == ([("2nd conversion", None)], False)
+
+def test_split_pairs_cardinality_mismatch_flags_ambiguous():
+    pairs, amb = conv_lib.split_multiselect_pairs("Main conversion,1st conversion", "Purchases")
+    assert pairs == [("Main conversion", None), ("1st conversion", None)] and amb is True
+
+def test_split_pairs_trims_whitespace_and_empty_type():
+    assert conv_lib.split_multiselect_pairs(" Main conversion , 1st conversion ", "Purchases, Custom 1")[0] == \
+        [("Main conversion", "Purchases"), ("1st conversion", "Custom 1")]
+    assert conv_lib.split_multiselect_pairs("", "") == ([], False)
+
+def _visualizer_viz(src_cid):
+    return {"visualization": {"display": "line", "columnValuesMapping": {
+        "COLUMN_1": [{"sourceId": f"card:{src_cid}", "originalName": "CPC", "name": "COLUMN_1"}],
+        "COLUMN_2": [{"sourceId": f"card:{src_cid}", "originalName": "TIME_PERIOD", "name": "COLUMN_2"}]},
+        "settings": {"graph.metrics": ["COLUMN_1"]}}}
+
+def test_repoint_visualizer_rewrites_all_source_refs():
+    out = conv_lib.repoint_visualizer_source(_visualizer_viz(2116), 2116, 49953)
+    refs = {m[0]["sourceId"] for m in out["visualization"]["columnValuesMapping"].values()}
+    assert refs == {"card:49953"}
+
+def test_repoint_visualizer_noop_when_no_visualizer():
+    viz = {"graph.dimensions": ["TIME_PERIOD"], "graph.metrics": ["CPC"]}
+    assert conv_lib.repoint_visualizer_source(viz, 2116, 49953) == viz
+
+def test_repoint_visualizer_does_not_touch_other_cards():
+    # une réf vers une AUTRE carte (card:21160) ne doit pas être altérée par old=2116
+    viz = {"visualization": {"columnValuesMapping": {
+        "C1": [{"sourceId": "card:21160", "originalName": "X", "name": "C1"}]}}}
+    out = conv_lib.repoint_visualizer_source(viz, 2116, 49953)
+    assert out["visualization"]["columnValuesMapping"]["C1"][0]["sourceId"] == "card:21160"
+
+def test_repoint_visualizer_noop_old_equals_new_and_none():
+    viz = _visualizer_viz(2116)
+    assert conv_lib.repoint_visualizer_source(viz, 2116, 2116) is viz
+    assert conv_lib.repoint_visualizer_source(None, 2116, 49953) is None
+
+def test_substitute_viz_preserves_human_labels_but_swaps_column_refs():
+    viz = {
+        "card.title": "Conversions",                       # libellé humain -> INCHANGÉ
+        "graph.metrics": ["conversions", "cac"],           # réfs colonnes -> substituées
+        "graph.x_axis.title_text": "Conversions par jour", # libellé axe -> INCHANGÉ
+        "scalar.field": "conversions",                     # réf colonne -> substituée
+        "series_settings": {"conversions": {"title": "Mes Conversions", "color": "#fff"}},
+        "column_settings": {'["name","CONVERSIONS"]': {"column_title": "Conversions", "number_style": "decimal"}},
+    }
+    out = conv_lib.substitute_viz(viz, {"CONVERSIONS": "PURCHASES"})
+    assert out["card.title"] == "Conversions"                       # titre préservé
+    assert out["graph.metrics"] == ["purchases", "cac"]            # réfs substituées
+    assert out["graph.x_axis.title_text"] == "Conversions par jour"
+    assert out["scalar.field"] == "purchases"
+    assert "purchases" in out["series_settings"]                    # clé série substituée
+    assert out["series_settings"]["purchases"]["title"] == "Mes Conversions"  # titre série préservé
+    assert '["name","PURCHASES"]' in out["column_settings"]         # clé column_settings substituée
+    assert out["column_settings"]['["name","PURCHASES"]']["column_title"] == "Conversions"  # column_title préservé
+
+def test_substitute_viz_noop_on_empty():
+    assert conv_lib.substitute_viz({}, {"CONVERSIONS": "PURCHASES"}) == {}
+    assert conv_lib.substitute_viz(None, {"CONVERSIONS": "PURCHASES"}) is None
+
+def test_conversion_display_names_maps_slots_and_skips_unmapped():
+    cmap = {0: "Purchases", 1: "__UNMAPPED__", 2: "Custom 2"}
+    assert conv_lib.conversion_display_names({"CONVERSIONS": "PURCHASES"}, cmap) == {"Purchases"}
+    assert conv_lib.conversion_display_names(["CONVERSIONS_2"], cmap) == {"Custom 2"}
+    assert conv_lib.conversion_display_names(["CONVERSIONS_1"], cmap) == set()  # __UNMAPPED__ ignoré
+
+def test_relabel_generic_title_to_named_conversion():
+    assert conv_lib.relabel_conversion_title("Conversions", {"Purchases"}) == "Purchases"
+    assert conv_lib.relabel_conversion_title("conversion", {"Leads"}) == "Leads"
+
+def test_relabel_preserves_business_label_and_rates():
+    assert conv_lib.relabel_conversion_title("Demandes de devis", {"Purchases"}) == "Demandes de devis"
+    assert conv_lib.relabel_conversion_title("Conversion rate", {"Purchases"}) == "Conversion rate"
+
+def test_relabel_preserves_when_ambiguous_or_no_display():
+    assert conv_lib.relabel_conversion_title("Conversions", {"Purchases", "Leads"}) == "Conversions"
+    assert conv_lib.relabel_conversion_title("Conversions", set()) == "Conversions"
+
+def test_is_required_param_error_recognizes_benign_cases():
+    assert conv_lib.is_required_param_error('Cannot run the query: missing required parameters: #{"bonus"}')
+    assert conv_lib.is_required_param_error("You'll need to pick a value for 'Breakdown'")
+    assert conv_lib.is_required_param_error("This parameter is required before this query can run")
+
+def test_is_required_param_error_false_on_real_sql_error():
+    assert not conv_lib.is_required_param_error("SQL compilation error: invalid identifier 'CONVERSIONS_X'")
+    assert not conv_lib.is_required_param_error("")
+    assert not conv_lib.is_required_param_error(None)
+
+
 TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_native_and_tags_legacy_query_fallback, test_old_columns_detects_positional_not_custom,
          test_old_columns_base_not_matched_inside_positional, test_old_columns_ignores_conversion_type_filter,
@@ -439,7 +537,16 @@ TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_strip_brand_atoms_idempotent_on_canonical_pair, test_table_column_map_main_slot_and_base,
          test_table_column_map_positional_slot_via_client_mapping, test_table_column_map_current_prefixed_source,
          test_table_column_map_evolution_columns, test_table_column_map_alias_names_and_bare_dim,
-         test_table_column_map_unmapped_slot_and_missing_target]
+         test_table_column_map_unmapped_slot_and_missing_target,
+         test_split_pairs_single, test_split_pairs_equal_multi_positional,
+         test_split_pairs_type_without_new_type_is_unmapped_not_ambiguous,
+         test_split_pairs_cardinality_mismatch_flags_ambiguous, test_split_pairs_trims_whitespace_and_empty_type,
+         test_repoint_visualizer_rewrites_all_source_refs, test_repoint_visualizer_noop_when_no_visualizer,
+         test_repoint_visualizer_does_not_touch_other_cards, test_repoint_visualizer_noop_old_equals_new_and_none,
+         test_substitute_viz_preserves_human_labels_but_swaps_column_refs, test_substitute_viz_noop_on_empty,
+         test_conversion_display_names_maps_slots_and_skips_unmapped, test_relabel_generic_title_to_named_conversion,
+         test_relabel_preserves_business_label_and_rates, test_relabel_preserves_when_ambiguous_or_no_display,
+         test_is_required_param_error_recognizes_benign_cases, test_is_required_param_error_false_on_real_sql_error]
 
 def run():
     failures = 0

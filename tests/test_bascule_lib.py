@@ -67,6 +67,21 @@ def test_find_time_param_ignores_temporal_unit():
     d["parameters"][0]["type"] = "temporal-unit"
     assert bascule_lib.find_time_param(d) is None
 
+def test_find_time_param_accepts_string_eq_type():
+    # Metabase a renommé 'category' -> 'string/=' : même filtre 'Time period', doit être détecté
+    d = _dash()
+    d["parameters"][0]["type"] = "string/="
+    p = bascule_lib.find_time_param(d)
+    assert p and p["id"] == "fc917174"
+
+def test_find_time_param_ignores_other_string_eq_params():
+    # un autre filtre texte (pas 'Time period') ne doit pas être pris pour le filtre temps
+    d = _dash()
+    d["parameters"][0]["type"] = "string/="
+    d["parameters"][0]["slug"] = "channel"
+    d["parameters"][0]["name"] = "Channel"
+    assert bascule_lib.find_time_param(d) is None
+
 def test_build_temporal_unit_param_keeps_id_and_default():
     new = bascule_lib.build_temporal_unit_param(_dash()["parameters"][0])
     assert new["id"] == "fc917174" and new["type"] == "temporal-unit"

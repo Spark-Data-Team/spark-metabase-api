@@ -13,7 +13,7 @@ sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 import conv_lib
 from migrate_dashboard_full import connect, load_inputs, _dcs
 
-GEN_COLL = 13950
+GEN_COLL = 14115  # même collection accessible que generate_fallback (cf. permissions)
 ALL_OLD = (["CONVERSIONS", "CONVERSION_VALUE"]
            + [f"CONVERSIONS_{n}" for n in range(1, 20)]
            + [f"CONVERSION_{n}_VALUE" for n in range(1, 20)])

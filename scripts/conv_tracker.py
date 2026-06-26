@@ -21,7 +21,8 @@ import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-TRACKER_JSON = REPO_ROOT / "migration" / "conv-migration-tracker.json"
+from conv_paths import reg_dir, is_isolated
+TRACKER_JSON = reg_dir() / "conv-migration-tracker.json"   # par-client si CONV_REG_DIR, sinon migration/
 TRACKER_MD = REPO_ROOT / "docs" / "conversion-migration-tracker.md"
 
 TAG = "[conv-2026-06]"   # ancre de CAMPAGNE
@@ -87,7 +88,29 @@ def save(tracker: list, path: Path = TRACKER_JSON):
     path.write_text(json.dumps(tracker, ensure_ascii=False, indent=2) + "\n")
 
 
+def upsert_key(entry: dict) -> tuple:
+    """Clé d'identité d'une entrée tracker (pour merge/dédup sans écrasement)."""
+    return (entry.get("client"), entry.get("original_id"), entry.get("copy_id"))
+
+
+def merge_trackers(master: list, shard: list) -> list:
+    """Fusionne un shard par-client dans le tracker maître, ADDITIF : une entrée du shard
+    remplace l'entrée maître DE MÊME CLÉ (mise à jour), sinon est ajoutée. L'ordre maître
+    est préservé ; les nouvelles entrées sont ajoutées à la fin. Aucune perte."""
+    by_key = {upsert_key(e): e for e in shard}
+    out, seen = [], set()
+    for e in master:
+        k = upsert_key(e)
+        out.append(by_key.get(k, e)); seen.add(k)
+    for e in shard:
+        if upsert_key(e) not in seen:
+            out.append(e)
+    return out
+
+
 def render_to_file(tracker: list, path: Path = TRACKER_MD):
+    if is_isolated():
+        return  # mode parallèle : la vue .md (partagée) est rendue par le CENTRAL après merge
     n = len(tracker)
     tagged = sum(1 for e in tracker if e.get("tagged"))
     archived = sum(1 for e in tracker if e.get("old_archived"))

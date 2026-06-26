@@ -42,15 +42,21 @@ def card_values(mb, card_id, client, window):
     rows = (r or {}).get("data", {}).get("rows", []) or []
     return sorted(round(float(x), 4) for row in rows for x in row if isinstance(x, (int, float)))
 
-def generate_card(mb, old_card, sub_map, coll_id):
+def generate_card(mb, old_card, sub_map, coll_id, cmap=None):
     dq = json.loads(json.dumps(old_card["dataset_query"]))
     for st in dq.get("stages", []) or []:
         if st.get("lib/type") == "mbql.stage/native":
             st["native"] = conv_lib.apply_substitution(st["native"], sub_map)
     if dq.get("type") == "native":
         dq["native"]["query"] = conv_lib.apply_substitution(dq["native"]["query"], sub_map)
-    viz = json.loads(conv_lib.apply_substitution(json.dumps(old_card.get("visualization_settings") or {}), sub_map))
-    r = mb.post("/api/card", json={"name": f"[migré] {old_card['name']}", "dataset_query": dq,
+    viz = conv_lib.substitute_viz(old_card.get("visualization_settings") or {}, sub_map)  # préserve les libellés humains
+    # titre générique (« Conversions ») -> conversion nommée (« Purchases ») ; libellé métier préservé
+    if cmap and viz.get("card.title"):
+        viz["card.title"] = conv_lib.relabel_conversion_title(
+            viz["card.title"], conv_lib.conversion_display_names(sub_map, cmap))
+    # nom propre (pas de préfixe « [migré] » : la tuile l'afficherait au consultant) ; la provenance
+    # vient de la collection dédiée 14115 + du registre generated-cards.json.
+    r = mb.post("/api/card", json={"name": old_card["name"], "dataset_query": dq,
                                    "display": old_card.get("display"), "visualization_settings": viz,
                                    "collection_id": coll_id})
     return r.get("id") if isinstance(r, dict) else None

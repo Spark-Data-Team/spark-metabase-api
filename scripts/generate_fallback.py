@@ -15,10 +15,25 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 import conv_lib
+import special_cards_lib as scl
+from conv_paths import reg_dir
 from migrate_dashboard_full import connect, load_inputs, generate_card, _dcs
 
-GEN_COLL = 13950
-REG = REPO / "migration" / "generated-cards.json"
+GEN_COLL = 14115  # « Conversions migrées — étape 3 (A→Z) » sous 11673 = LISIBLE par les consultants
+# (PAS le sandbox 13950/13851 : sinon tuiles VIDES côté conso — cf. leçon permissions)
+REG = reg_dir() / "generated-cards.json"  # par-client si CONV_REG_DIR (parallèle), sinon migration/
+
+
+def load_special_ids():
+    """new_ids des cartes spéciales déjà migrées (#87->49788, #4854->49755…) -> à SKIPPER :
+    elles affichent du nommé même si leur SQL référence encore des colonnes CONVERSIONS."""
+    entries = []
+    for f in (REPO / "migration").glob("tu-generic-*.json"):
+        try:
+            entries.append(json.loads(f.read_text()))
+        except Exception:
+            pass
+    return scl.replacement_ids(entries)
 DC_FIELDS = ("card_id", "row", "col", "size_x", "size_y", "series",
              "parameter_mappings", "visualization_settings", "dashboard_tab_id")
 
@@ -40,7 +55,10 @@ def render_ok(mb, cid, client):
         wt = (tags.get("client") or {}).get("widget-type") or "string/="
         params.append({"type": wt, "value": [client], "target": ["dimension", ["template-tag", "client"]]})
     for _ in range(2):
-        r = mb.post(f"/api/card/{cid}/query", "raw", json={"parameters": params}, timeout=300)
+        # via /api/dataset (pas /api/card/<id>/query) : ne PAS imposer l'UI-required (ex. un
+        # sélecteur 'breakdown' requis sans défaut bloquerait à tort) — on vérifie la VALIDITÉ
+        # SQL de la substitution, pas l'ergonomie. Les params requis viennent du dashboard à l'usage.
+        r = mb.post("/api/dataset", "raw", json={**c["dataset_query"], "parameters": params}, timeout=300)
         try:
             b = r.json() if r.text else {}
         except Exception:
@@ -48,8 +66,13 @@ def render_ok(mb, cid, client):
         st = b.get("status") if isinstance(b, dict) else None
         if st == "completed":
             return True  # la carte s'exécute ; substitution SQL+viz cohérente -> rend comme l'ancienne
-        if st == "failed":  # vraie erreur SQL
-            return False
+        if st == "failed":
+            # param REQUIS non fourni (« pick a value », « before this query can run », « missing
+            # required parameter X » — ex. tag 'bonus'/'breakdown' sans défaut) = PAS une erreur SQL
+            # de la substitution -> on garde (structurellement cohérent ; le dashboard fournit le param).
+            if conv_lib.is_required_param_error(b.get("error")):
+                return True
+            return False  # vraie erreur SQL
     return True  # timeout/incomplet -> bénéfice du doute (struct. cohérent)
 
 
@@ -63,12 +86,13 @@ def main():
     mapping_all, _ = load_inputs()
     cmap = {int(k): v for k, v in mapping_all.get(args.client, {}).items()}
     reg = load_reg()
+    special = load_special_ids()  # cartes spéciales déjà migrées -> ne pas retraiter
     dash = mb.get(f"/api/dashboard/{args.copy}")
 
     new_dcs, report = [], []
     for dc in _dcs(dash):
         cid = dc.get("card_id")
-        if not cid:
+        if not cid or cid in special:
             new_dcs.append(dc); continue
         card = mb.get(f"/api/card/{cid}")
         sql, _ = conv_lib.native_and_tags(card)
@@ -83,7 +107,7 @@ def main():
         key = f"{cid}|{args.client}"
         gen_id = reg.get(key)
         if not gen_id and args.yes:
-            gen_id = generate_card(mb, card, sub_map, GEN_COLL)
+            gen_id = generate_card(mb, card, sub_map, GEN_COLL, cmap)
             if gen_id and render_ok(mb, gen_id, args.client):
                 reg[key] = gen_id
             elif gen_id:
@@ -99,8 +123,18 @@ def main():
         # la config de colonnes du DASHCARD (table.columns / column_settings / series) référence
         # les anciens noms -> substituer pareil pour que l'affichage (visibilité, ordre, titres) colle.
         if nd.get("visualization_settings"):
-            nd["visualization_settings"] = json.loads(
-                conv_lib.apply_substitution(json.dumps(nd["visualization_settings"]), sub_map))
+            # substitue les réfs de colonnes du DASHCARD (table.columns/column_settings/series)
+            # en PRÉSERVANT les libellés humains (card.title, titres) ;
+            nd["visualization_settings"] = conv_lib.substitute_viz(nd["visualization_settings"], sub_map)
+            # titre OVERRIDE générique du dashcard -> conversion nommée (libellé métier préservé)
+            if nd["visualization_settings"].get("card.title"):
+                nd["visualization_settings"]["card.title"] = conv_lib.relabel_conversion_title(
+                    nd["visualization_settings"]["card.title"],
+                    conv_lib.conversion_display_names(sub_map, cmap))
+            # puis dashcard « visualizer » : repointer les réfs "card:<old>" vers la carte générée
+            # (sinon le visualizer source l'ancienne carte positionnelle = tuile VIDE).
+            nd["visualization_settings"] = conv_lib.repoint_visualizer_source(
+                nd["visualization_settings"], cid, gen_id)
         for pm in nd.get("parameter_mappings") or []:
             pm["card_id"] = gen_id
         new_dcs.append(nd)
@@ -121,9 +155,9 @@ def main():
         print("(DRY-RUN — rien généré.)")
     # contrôle 100%
     chk = mb.get(f"/api/dashboard/{args.copy}")
-    left = [dc.get("card_id") for dc in _dcs(chk) if dc.get("card_id")
+    left = [dc.get("card_id") for dc in _dcs(chk) if dc.get("card_id") and dc.get("card_id") not in special
             and conv_lib.old_conversion_columns(conv_lib.native_and_tags(mb.get(f"/api/card/{dc['card_id']}"))[0])]
-    print(f"Tuiles encore sur l'ancien système : {left if left else 'AUCUNE ✅ (100%)'}")
+    print(f"Tuiles encore sur l'ancien système (hors cartes spéciales migrées) : {left if left else 'AUCUNE ✅ (100%)'}")
 
 
 if __name__ == "__main__":

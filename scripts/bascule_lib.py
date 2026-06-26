@@ -30,10 +30,16 @@ def time_param_payload(tags, value):
     return None
 
 
+# types « filtre texte » que prend l'ancien param 'Time period' : 'category' (ancien nom)
+# OU 'string/=' (nom plus récent du MÊME filtre texte). Identifié ensuite par slug/nom.
+OLD_TIME_TYPES = frozenset({"category", "string/="})
+
 def find_time_param(dashboard):
-    """L'ancien param 'Time period' (type category) du dashboard, sinon None."""
+    """L'ancien param 'Time period' du dashboard (filtre texte category|string/=), sinon None.
+    On accepte les deux types car Metabase a renommé 'category' -> 'string/=' : c'est le même
+    sélecteur de granularité, identifié par son slug/nom ('time_period' / 'Time period')."""
     for p in dashboard.get("parameters") or []:
-        if p.get("type") != "category":
+        if p.get("type") not in OLD_TIME_TYPES:
             continue
         if p.get("slug") == TIME_TAG or str(p.get("name", "")).strip().lower() == "time period":
             return p

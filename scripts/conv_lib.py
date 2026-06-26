@@ -254,6 +254,102 @@ def apply_substitution(text, sub_map):
                         lambda m, n=new: n.lower() if m.group(0).islower() else n.upper(), masked)
     return _unmask_literals(masked, parts)
 
+def repoint_visualizer_source(viz_settings, old_cid, new_cid):
+    """Dashcard « visualizer » (Metabase) : la viz combine des colonnes de cartes SOURCES,
+    référencées par "card:<id>" dans visualization.columnValuesMapping (et dataSources). Quand
+    on repointe un dashcard d'une carte old_cid -> new_cid, il faut AUSSI réécrire ces réfs,
+    sinon le visualizer source l'ANCIENNE carte (positionnelle) = tuile vide. Réécrit le token
+    EXACT "card:<old_cid>" -> "card:<new_cid>" (n'altère pas card:<old_cid>X). No-op si viz
+    None / sans cette réf / old_cid==new_cid. Pur."""
+    if not viz_settings or old_cid is None or new_cid is None or old_cid == new_cid:
+        return viz_settings
+    s = json.dumps(viz_settings, ensure_ascii=False)
+    token = f'"card:{old_cid}"'
+    if token not in s:
+        return viz_settings
+    return json.loads(s.replace(token, f'"card:{new_cid}"'))
+
+# Clés de viz qui portent un LIBELLÉ HUMAIN (jamais une réf de colonne) -> à NE PAS substituer.
+VIZ_LABEL_KEYS = frozenset({
+    "card.title", "title", "title_text", "column_title",
+    "graph.x_axis.title_text", "graph.y_axis.title_text",
+})
+
+def substitute_viz(viz, sub_map):
+    """Substitue les RÉFÉRENCES de colonnes dans une viz (graph.metrics/dimensions, clés
+    series_settings & column_settings, scalar.field, table.columns[].name…) SANS toucher aux
+    LIBELLÉS humains (card.title, titres d'axes/séries, column_title). La substitution brute
+    sur le JSON entier corrompait les titres : un card.title='Conversions' devenait 'PURCHASES'.
+    Récursif ; substitue les CLÉS (réfs) et les VALEURS string, mais garde intacte la valeur
+    d'une clé-libellé. No-op si viz vide. Pur."""
+    if not viz:
+        return viz
+    def walk(node):
+        if isinstance(node, dict):
+            out = {}
+            for k, v in node.items():
+                nk = apply_substitution(k, sub_map) if isinstance(k, str) else k
+                out[nk] = v if (isinstance(k, str) and k in VIZ_LABEL_KEYS) else walk(v)
+            return out
+        if isinstance(node, list):
+            return [walk(x) for x in node]
+        if isinstance(node, str):
+            return apply_substitution(node, sub_map)
+        return node
+    return walk(viz)
+
+# libellés de tuile GÉNÉRIQUES (conversion non nommée) -> remplaçables par la conversion nommée.
+# Les libellés MÉTIER choisis par le consultant (« Demandes de devis », « Ventes »…) sont préservés.
+GENERIC_CONV_TITLES = frozenset({"conversions", "conversion", "main conversion"})
+
+def conversion_display_names(old_cols, cmap):
+    """Noms d'affichage (Airtable) des conversions NOMMÉES qu'une tuile mesure : pour chaque ancienne
+    colonne conversion -> slot -> cmap[slot]. `old_cols` = sub_map (dict, clés=colonnes) ou itérable
+    de colonnes. Ignore les slots non mappés / en conflit."""
+    cols = old_cols.keys() if isinstance(old_cols, dict) else old_cols
+    out = set()
+    for c in cols:
+        v = cmap.get(_slot_of(c))
+        if v and v not in ("__UNMAPPED__", "__CONFLICT__"):
+            out.add(v)
+    return out
+
+def relabel_conversion_title(old_title, display_names):
+    """Si old_title est un libellé de conversion GÉNÉRIQUE et que la tuile mesure UNE seule conversion
+    nommée, renvoie son nom d'affichage ; sinon garde old_title (préserve les libellés métier). Pur."""
+    uniq = sorted(n for n in display_names if n)
+    if len(uniq) == 1 and str(old_title or "").strip().lower() in GENERIC_CONV_TITLES:
+        return uniq[0]
+    return old_title
+
+def is_required_param_error(err):
+    """True si l'erreur d'exécution = un paramètre REQUIS non fourni (param obligatoire sans défaut,
+    fourni par le dashboard à l'usage) et NON une vraie erreur SQL : « pick a value for X », « before
+    this query can run », « missing required parameter(s) X ». La carte est alors structurellement OK
+    (à NE PAS archiver). Pur."""
+    low = str(err or "").lower()
+    return ("pick a value" in low or "before this query can run" in low
+            or "missing required parameter" in low)
+
+def split_multiselect_pairs(type_cell, new_type_cell):
+    """Aplatit une ligne Airtable où `type` et `new_type` sont des multi-select (CSV =
+    valeurs jointes par virgule). Retourne (pairs, ambiguous) :
+      pairs     = [(type, new_type | None)] ;
+      ambiguous = True si on ne peut PAS pairer sûrement (cardinalités ≠ et non vides) -> Gaby.
+    Pairing POSITIONNEL quand les cardinalités correspondent (convention de saisie observée :
+    'Main conversion,1st conversion' / 'Purchases,Custom 1'). Un `type` sans `new_type` = slot
+    non mappé (None), pas ambigu."""
+    types = [t.strip() for t in (type_cell or "").split(",") if t.strip()]
+    news = [n.strip() for n in (new_type_cell or "").split(",") if n.strip()]
+    if not types:
+        return [], False
+    if len(news) == len(types):
+        return list(zip(types, news)), False
+    if not news:
+        return [(t, None) for t in types], False
+    return [(t, None) for t in types], True  # cardinalités ≠ -> pairing impossible -> à trancher (Gaby)
+
+
 def build_client_mappings(records):
     """records: [{client, type, new_type}] -> {client: {slot: new_type | UNMAPPED | CONFLICT}}."""
     seen = defaultdict(lambda: defaultdict(set))

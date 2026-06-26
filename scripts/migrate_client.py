@@ -25,6 +25,10 @@ def run_step(script, copy, client, extra, yes):
         cmd.append("--yes")
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     tail = "\n".join((out.stdout or "").strip().splitlines()[-4:])
+    # exit≠0 : remonter aussi le stderr (sys.exit bénin « Pas de param… » OU vrai traceback) —
+    # sans ça, les deux sont indistinguables (sortie = juste la ligne d'auth). Levée du point aveugle.
+    if out.returncode != 0 and (out.stderr or "").strip():
+        tail += "\n  [stderr] " + "\n  [stderr] ".join((out.stderr).strip().splitlines()[-3:])
     return tail, (out.returncode == 0)
 
 
@@ -58,6 +62,7 @@ def main():
         for script, extra in [
             ("migrate_dashboard_reuse.py", ["--source", str(orig), "--planned-temporal-unit", "--accept-diffs"]),
             ("swap_tables.py", ["--accept-diffs"]),
+            ("deploy_special_cards.py", []),    # cartes sélecteur #87 -> 49788 (AVANT la bascule)
             ("bascule_time_filter.py", ["--auto-prepare"]),
             ("generate_fallback.py", []),       # génère les tuiles sans équivalent (objectif 100%)
             ("polish_generated_viz.py", []),    # repolit la viz des cartes générées
