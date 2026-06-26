@@ -322,6 +322,15 @@ def relabel_conversion_title(old_title, display_names):
         return uniq[0]
     return old_title
 
+def normalize_period_label(s):
+    """Canonicalise un libellé de PÉRIODE pour aligner des formats différents (ex. '2026 - W22'
+    et '2026_22' -> (2026, 22)) : extrait les groupes de chiffres dans l'ordre. Sans chiffre,
+    renvoie la chaîne nettoyée majuscule (= libellé exact). Sûr à granularité FIXÉE (semaine vs
+    mois ne se télescopent pas dans une même comparaison). Pur."""
+    s = str(s).strip()
+    nums = re.findall(r"\d+", s)
+    return tuple(int(n) for n in nums) if nums else s.upper()
+
 def is_required_param_error(err):
     """True si l'erreur d'exécution = un paramètre REQUIS non fourni (param obligatoire sans défaut,
     fourni par le dashboard à l'usage) et NON une vraie erreur SQL : « pick a value for X », « before

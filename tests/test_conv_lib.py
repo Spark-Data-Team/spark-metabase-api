@@ -511,6 +511,11 @@ def test_is_required_param_error_false_on_real_sql_error():
     assert not conv_lib.is_required_param_error("")
     assert not conv_lib.is_required_param_error(None)
 
+def test_normalize_period_label_aligns_week_formats():
+    assert conv_lib.normalize_period_label("2026 - W22") == conv_lib.normalize_period_label("2026_22") == (2026, 22)
+    assert conv_lib.normalize_period_label("2026-05") == (2026, 5)
+    assert conv_lib.normalize_period_label("Total") == "TOTAL"  # sans chiffre -> libellé exact
+
 
 TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_native_and_tags_legacy_query_fallback, test_old_columns_detects_positional_not_custom,
@@ -546,7 +551,8 @@ TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_substitute_viz_preserves_human_labels_but_swaps_column_refs, test_substitute_viz_noop_on_empty,
          test_conversion_display_names_maps_slots_and_skips_unmapped, test_relabel_generic_title_to_named_conversion,
          test_relabel_preserves_business_label_and_rates, test_relabel_preserves_when_ambiguous_or_no_display,
-         test_is_required_param_error_recognizes_benign_cases, test_is_required_param_error_false_on_real_sql_error]
+         test_is_required_param_error_recognizes_benign_cases, test_is_required_param_error_false_on_real_sql_error,
+         test_normalize_period_label_aligns_week_formats]
 
 def run():
     failures = 0

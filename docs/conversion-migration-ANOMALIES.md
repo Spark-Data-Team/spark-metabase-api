@@ -145,9 +145,13 @@
     · → **DÉFINITION** : « Leads » nommé compte autrement que le positionnel `CONVERSIONS_1` de Toploc.
       **TEAM LEAD/DATA** : slot 1 = bien « Leads » ? écart 36→23 attendu ? 34248 reste sur l'ancien (correct).
     · Leçon : le slot→nommé n'est PAS toujours un rename iso-valeur — la vérif par-tuile est essentielle.
-- ⚠️ **POLICY `--accept-diffs`** (utilisé par migrate_client) : forcerait ce swap malgré l'écart LEADS 30%
-  (il n'est pensé que pour des diffs COSMÉTIQUES libellé/casse). → à durcir : ne pas forcer sur écart de
-  VALEUR important (seuil), sinon des écarts réels passeraient en silence. **Décision user requise.**
+- ⚠️ **POLICY `--accept-diffs`** (utilisé par migrate_client) : forcerait ce swap malgré l'écart LEADS 30%.
+  ✅ **TRANCHÉ + IMPLÉMENTÉ (user 2026-06-26 « on bloque et on review »)** : tout ÉCART DE VALEUR bloque
+  désormais le swap → REVUE (`blocked = hard or value_diffs` ; `--accept-diffs` ne contourne plus les
+  valeurs). + `conv_lib.normalize_period_label` aligne les formats de période ('2026 - W22' vs '2026_22')
+  pour que la compare cellule détecte les vrais écarts (sinon masqués en « (lignes) »). Validé sur Toploc :
+  swap bloqué, écart visible « CONVERSIONS_1→CURRENT_LEADS 38 vs 25 ». Suite **204 verte**. Routage revue
+  (user = data) : mapping vraiment différent → consultant ; bug data → user.
 
 ### ⏳ GAP À TRANCHER — filtre « Time period » non basculé en temporal-unit (AMV, « pour info » user)
 - `bascule_lib._old_time_param` ne détecte le filtre que si `type == "category"` (`bascule_lib.py:36`).
