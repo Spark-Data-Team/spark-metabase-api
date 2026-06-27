@@ -254,6 +254,54 @@ def apply_substitution(text, sub_map):
                         lambda m, n=new: n.lower() if m.group(0).islower() else n.upper(), masked)
     return _unmask_literals(masked, parts)
 
+
+def _select_item_alias(line):
+    """Alias d'un item SELECT mono-ligne : l'identifiant après le dernier ` AS `, sinon une ligne
+    « colonne nue , » (passthrough de CTE). None si non parsable. Littéraux masqués."""
+    masked, _ = _mask_literals(line)
+    m = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)\s*,?\s*$", masked, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    m2 = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*,?\s*$", masked)
+    return m2.group(1) if m2 else None
+
+
+def drop_conversion_selects(sql):
+    """Brique b — retire du SQL généré les ITEMS SELECT qui référencent encore une colonne de
+    conversion POSITIONNELLE (CONVERSIONS / CONVERSIONS_N / CONVERSION_N_VALUE / CONVERSION_VALUE),
+    y compris les dérivés mono-ligne (ex. `... AS cac_N` qui calculent `SUM(conversions_N)`).
+    Objectif : après `apply_substitution` (qui a renommé les slots MAPPÉS en colonnes nommées),
+    supprimer les slots NON mappés pour que la carte ne référence PLUS aucune colonne positionnelle
+    → satisfait l'Iron Law (« garder seulement les conversions réelles, retirer le positionnel
+    inutilisé »).
+
+    Approche par LIGNE (style des cartes Spark = un item SELECT par ligne) : on retire les lignes
+    dont `old_conversion_columns` est non vide (même détection ; littéraux & colonnes nommées
+    épargnés), puis on corrige la virgule pendante de l'item devenu dernier avant FROM/UNION.
+
+    SÉCURITÉ (self-safe, pur) : si une ligne RETIRÉE expose un alias DÉRIVÉ encore référencé par une
+    ligne GARDÉE (cartes « KPIs evolution » : `conversions_N` alimente `current_conversions_N` /
+    `*_evolution` sur plusieurs CTE, avec des CASE multi-lignes que ce découpage par ligne ne sait
+    pas suivre), le drop simple casserait le SQL → on renvoie le SQL INCHANGÉ (no-op = on garde la
+    version substituée, comportement actuel, zéro régression ; ces cartes restent un chantier à
+    part). No-op aussi si aucune colonne positionnelle. (Filet ultime en aval : render_ok archive
+    tout SQL cassé.)"""
+    if not sql or not old_conversion_columns(sql):
+        return sql
+    lines = sql.splitlines()
+    drop_i = {i for i, ln in enumerate(lines) if old_conversion_columns(ln)}
+    if not drop_i:
+        return sql
+    dropped_aliases = {a.lower() for a in (_select_item_alias(lines[i]) for i in drop_i) if a}
+    kept_sql = "\n".join(ln for i, ln in enumerate(lines) if i not in drop_i)
+    masked_kept, _ = _mask_literals(kept_sql)
+    for al in dropped_aliases:
+        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(al)}(?![A-Za-z0-9_])", masked_kept, re.IGNORECASE):
+            return sql  # référence pendante -> drop non sûr -> no-op
+    # item SELECT devenu dernier -> retirer sa virgule traînante avant FROM / UNION
+    return re.sub(r",(\s*(?:--[^\n]*\n\s*)*)(FROM\b|UNION\b)", r"\1\2", kept_sql, flags=re.IGNORECASE)
+
+
 def repoint_visualizer_source(viz_settings, old_cid, new_cid):
     """Dashcard « visualizer » (Metabase) : la viz combine des colonnes de cartes SOURCES,
     référencées par "card:<id>" dans visualization.columnValuesMapping (et dataSources). Quand

@@ -41,9 +41,20 @@ user en **français, simple et visuel** ; pas de commit sans demande.
   plus ; la revue montre la colonne+chiffres, ex. Toploc « CONVERSIONS_1→CURRENT_LEADS 38 vs 25 »).
   Routage : mapping vraiment différent → consultant ; bug data → user (= équipe data). (2) titre tuile
   migrée = conversion nommée si titre générique, libellé métier préservé.
-- **À FAIRE ENSUITE** : prendre le **prochain lot (4-6 clients NON faits)** dans `migration/worklist.json`,
-  dérouler via la recette PARALLEL, valider lot par lot avec le user. Les tuiles « À REVOIR (écart valeur) »
-  → liste pour le user. Toploc slot 1 (Leads 36→23) en attente d'arbitrage data/consultant.
+- **Lot 3 (2026-06-27)** : Dedikazio (26490), Dermalogica (26491), Shining (26492), TuneCore (26494),
+  Zeplug (26493), Violette_FR (26495 GA4 + 26496 Global). Merge OK (tracker 43→50).
+- **🧩 BRIQUE B CODÉE + RÉ-APPLIQUÉE (2026-06-27)** : `conv_lib.drop_conversion_selects` (pur, 5 tests TDD,
+  suite **209**) retire du SQL généré les slots NON mappés (Iron Law = niveau **SQL**, pas affichage ; « masquer »
+  ne suffisait pas). Câblée dans `migrate_dashboard_full.generate_card` → **les futurs lots passent en 1 passe**.
+  **Self-safe** : no-op sur les cartes **KPIs-evolution** (réfs dérivées multi-CTE / CASE multi-lignes) → zéro
+  régression. Lot 3 : dashboards visible-100% **2 → 4** (+Zeplug, +Violette GA4) ; résidu restant = **5 tuiles,
+  uniquement KPIs-evolution / 2-dim** = le **follow-on** (parseur cascade OU carte générique « par X — KPIs
+  evolution »). Détails : ANOMALIES « BRIQUE B » + PROGRESS lot 3.
+- **À FAIRE ENSUITE** : prendre le **prochain lot (4-6 clients NON faits)** dans `migration/worklist.json`
+  (déjà faits : lots 1-3 = AMV, Exaprint, Be Radiance, Ecopia, Komilfo, Osée, Toploc, Solarock, CapCar,
+  Dedikazio, Dermalogica, Shining, TuneCore, Zeplug, Violette_FR), dérouler via la recette PARALLEL, valider
+  lot par lot. ⚠️ harnais subagent : **interdire le background** (3 récidives). Toploc slot 1 (Leads 36→23) =
+  arbitrage data/consultant. Follow-on KPIs-evolution = décision user pour prioriser.
 
 ## 2. État au 2026-06-24 (avant le harnais — historique)
 - **1 client complet** (Iron Law) : 100% Print. **2 dashboards true-100%** : copies 26127 (100% Print), 26197 (Cica Home).

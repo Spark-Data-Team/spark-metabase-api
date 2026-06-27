@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests de conv_lib — script autonome. Usage : python3 tests/test_conv_lib.py"""
-import json, sys
+import json, re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import conv_lib
@@ -517,7 +517,71 @@ def test_normalize_period_label_aligns_week_formats():
     assert conv_lib.normalize_period_label("Total") == "TOTAL"  # sans chiffre -> libellé exact
 
 
+def test_drop_conversion_selects_removes_unmapped_positional():
+    # brique b : après substitution des slots mappés, retirer les items SELECT des slots NON mappés
+    # (y compris les dérivés cac_N qui référencent conversions_N) -> 0 colonne positionnelle (Iron Law).
+    sql = ("SELECT\n"
+           "  SUM(purchases) AS purchases,\n"
+           "  SUM(conversions_2) AS conversions_2,\n"
+           "  COALESCE(SUM(cost)/NULLIF(SUM(conversions_2),0),0) AS cac_2,\n"
+           "  SUM(conversion_2_value) AS conversion_2_value\n"
+           "FROM data")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()   # plus aucune colonne positionnelle
+    assert "purchases" in out                              # la conversion nommée (mappée) reste
+    assert "cac_2" not in out                              # le dérivé référençant conversions_2 part aussi
+    assert not re.search(r",\s*FROM", out)                 # pas de virgule pendante avant FROM
+
+
+def test_drop_conversion_selects_noop_when_no_positional():
+    sql = "SELECT SUM(purchases) AS purchases,\n  SUM(clicks) AS clicks\nFROM data"
+    assert conv_lib.drop_conversion_selects(sql) == sql
+
+
+def test_drop_conversion_selects_keeps_named_columns_around_dropped():
+    sql = ("SELECT\n"
+           "  channel,\n"
+           "  SUM(conversions_3) AS conversions_3,\n"
+           "  SUM(clicks) AS clicks\n"
+           "FROM data")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "channel" in out and "clicks" in out and "conversions_3" not in out
+
+
+def test_drop_conversion_selects_preserves_named_and_literals():
+    # named (custom_conversions_1, lookbehind '_') + littéral 'conversions_2' -> rien à retirer
+    sql = ("SELECT\n"
+           "  SUM(custom_conversions_1) AS custom_conversions_1,\n"
+           "  'conversions_2' AS note,\n"
+           "  SUM(clicks) AS clicks\n"
+           "FROM data")
+    assert conv_lib.drop_conversion_selects(sql) == sql
+
+
+def test_drop_conversion_selects_noop_when_derived_reference_would_dangle():
+    # carte KPIs-evolution : un slot non mappé (conversions_2) alimente une colonne DÉRIVÉE
+    # (current_conversions_2, lookbehind '_' -> non détectée comme positionnelle) RÉFÉRENCÉE plus
+    # loin. Le drop simple par ligne casserait le SQL (réf pendante) -> NO-OP (sécurité, on garde
+    # la version substituée = comportement actuel ; pas de régression).
+    sql = ("SELECT\n"
+           "  SUM(conversions_2) AS current_conversions_2,\n"
+           "  SUM(clicks) AS clicks\n"
+           "FROM data),\n"
+           "evo AS (\n"
+           "  SELECT\n"
+           "    current_conversions_2,\n"
+           "    clicks\n"
+           "  FROM agg)")
+    assert conv_lib.drop_conversion_selects(sql) == sql
+
+
 TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
+         test_drop_conversion_selects_removes_unmapped_positional,
+         test_drop_conversion_selects_noop_when_no_positional,
+         test_drop_conversion_selects_keeps_named_columns_around_dropped,
+         test_drop_conversion_selects_preserves_named_and_literals,
+         test_drop_conversion_selects_noop_when_derived_reference_would_dangle,
          test_native_and_tags_legacy_query_fallback, test_old_columns_detects_positional_not_custom,
          test_old_columns_base_not_matched_inside_positional, test_old_columns_ignores_conversion_type_filter,
          test_new_columns_named_and_custom, test_slot_old_columns, test_type_to_slot,

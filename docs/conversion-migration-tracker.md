@@ -1,8 +1,8 @@
 # Migration conversions — SUIVI (généré, ne pas éditer à la main)
 
 > Source : `migration/conv-migration-tracker.json` · régénérer : `conv_tracker.py --render`.
-> Ancre de campagne : `[conv-2026-06]`. **43 dashboards** · 40 taggés · 0 anciens archivés.
-> Clients : Pro Nutrition (4), Goodiespub (2), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1).
+> Ancre de campagne : `[conv-2026-06]`. **50 dashboards** · 47 taggés · 0 anciens archivés.
+> Clients : Pro Nutrition (4), Goodiespub (2), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1).
 
 Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:true` (opt-in pour archiver l'ancien) · `old_archived` (ancien archivé). L'archivage des anciens est piloté par `archive_superseded.py` et ne touche QUE les lignes `archive_old:true`.
 
@@ -51,3 +51,10 @@ Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:tr
 | Solarock | Solarock - performance par adset meta  | 26459 | 18207 | ✅ | migré | — | — |  |
 | Solarock | Solarock - Perf par adset | 26462 | 19857 | ✅ | migré | — | — |  |
 | Toploc | Lead  Overview \| Toploc | 26457 | 16755 | ✅ | migré | — | — |  |
+| Dedikazio | Reporting SEO \| | 26490 | 17977 | ✅ | migré | — | — |  |
+| Dermalogica | Reporting SEO \| Dermalogica | 26491 | 18042 | ✅ | migré | — | — |  |
+| Shining | Global \| Shining | 26492 | 67 | ✅ | migré | — | — |  |
+| TuneCore | TuneCore - global perf | 26494 | 11915 | ✅ | migré | — | — |  |
+| Violette_FR | Google Analytics \| Violette_FR | 26495 | 6524 | ✅ | migré | — | — |  |
+| Violette_FR | Global \| Violette FR | 26496 | 6885 | ✅ | migré | — | — |  |
+| Zeplug | Zeplug \| Dashboard | 26493 | 17680 | ✅ | migré | — | — |  |

@@ -167,3 +167,74 @@
     Suite **197 verte**. ⚠️ effet de bord mineur : la tuile **benchmark CPC** (49953, tag `time_periods`
     pluriel ≠ temporal-unit) voit son câblage temps nettoyé → s'affiche en mensuel mais ne suit plus le
     sélecteur de granularité (rend OK). Gap benchmark/visualizer × bascule à traiter si ça gêne.
+
+---
+
+## Lot 3 — 2026-06-27 · Dedikazio, Dermalogica, Shining, TuneCore, Zeplug, Violette_FR
+
+### ✅ Résultat
+- **Dedikazio** (26490) & **Dermalogica** (26491) : **visible-100%** (dashboards GA4 mono-conversion ; 3 tuiles
+  GA4 → fallback, bascule temporal-unit ✅). Propres.
+- **Shining** (26492), **TuneCore** (26494), **Zeplug** (26493), **Violette_FR** (26495 GA4 + 26496 Global) :
+  slots réels migrés + bascule TU, MAIS **résidu table-large** (voir ci-dessous). Zeplug : pas de filtre période.
+
+### 🔎 TABLE-LARGE = PATRON DOMINANT (et un sous-cas neuf : les cartes « Synthèse des performances »)
+- Lot 3 confirme : dès qu'un dashboard porte une table « Synthèse des performances » / « Performances by
+  date/campaign », elle référence les **20 slots positionnels** (CONVERSIONS, CONVERSIONS_1..19,
+  CONVERSION_*_VALUE). Un client à 1-3 conversions réelles laisse 15-18 colonnes non mappées → reste sur
+  l'ancien (Iron Law non atteint). **Touche quasi tout client « réel »** (seuls les dashboards GA4
+  mono-conversion passent visible-100% direct).
+- **NOUVEAU sous-cas** : les cartes **« Synthèse des performances »** passent par **`generate_fallback`** (pas
+  `swap_tables`). La carte générée substitue les slots MAPPÉS mais **GARDE les positionnels non mappés** dans le
+  SQL → elle **rend OK** (donc non archivée) → le détecteur Iron-Law la flagge « sur l'ancien ». Ex : TuneCore
+  5709/29059/gén.**50107** ; Violette **50099 ; 50110-50114** ; Shining **50104** (791) ; Zeplug **50087** (312).
+- Le fix lot-2 (`swap_tables` 3 trous bouchés) couvre les tables **breakdown explicites**, PAS le chemin
+  `generate_fallback` des « Synthèse ». → **brique b** = masquer/retirer les colonnes positionnelles non mappées
+  des cartes générées (comme `swap_tables` reconstruit `table.columns`). **C'est désormais le bottleneck #1** du
+  balayage. À trancher : (a) router ces cartes vers `swap_tables` (réutiliser le masquage existant) ou (b)
+  ajouter le masquage dans `generate_fallback`.
+- ⚠️ **Ce n'est PAS du Gaby** (le mapping client est correct) **ni une régression** (chemin SQL inchangé,
+  valeurs des slots mappés vérifiées par tuile). C'est la **brique b** de la décision user 2026-06-26
+  (« garder seulement les conversions réelles, masquer les colonnes positionnelles vides »), pas encore codée
+  pour le chemin generate_fallback.
+
+### ⚠️ PROCESS — backgrounding récidive (TuneCore) + interruption (Violette)
+- Le subagent **TuneCore** a de nouveau **BACKGROUNDÉ** la commande + armé un monitor + rendu la main avant la
+  fin (**3e occurrence** après Osée lot 2). Le travail s'est quand même terminé (copie 26494 + bascule
+  `verified:true`). **Violette** interrompue par l'user **en phase RAPPORT** (la migration était déjà finie :
+  2 copies + fallbacks + bascule écrits avant l'interruption).
+- État reconstruit **en CENTRAL** via un détecteur Iron-Law standalone (même logique que `generate_fallback`
+  lignes 156-160 : `old_conversion_columns` sur chaque carte du dashboard, hors `replacement_ids`). **Pas de
+  re-run** (re-lancer `migrate_client` aurait créé des copies doublons type Be Radiance) ; vérifié : 1 copie/
+  dashboard dans 14016, **zéro doublon**.
+- Reco : le harnais subagent devrait **interdire le background** (wrapper « 1 commande foreground bloquante »
+  plutôt que de compter sur la consigne en prose, qui a échoué 3×).
+
+### 🧩 BRIQUE B — CODÉE (2026-06-27, après diagnostic) : retrait SQL des slots non mappés
+- **Diagnostic affiné** (correction du modèle initial) : « masquer les colonnes » (affichage `table.columns`)
+  **ne satisfait PAS l'Iron Law** — le détecteur teste le **SQL** ; tant que la carte `SELECT`-e les colonnes
+  positionnelles, elle cassera quand on les retirera des tables source. La vraie brique b = **retirer les
+  expressions SELECT des slots NON mappés du SQL** déjà substitué. Et c'est **général** (1 fix couvre social-ad,
+  campaign, GA4, multi-dim — pas seulement « table large »), car purement textuel.
+- **Implémentation TDD** : `conv_lib.drop_conversion_selects(sql)` (pur) + `conv_lib._select_item_alias` —
+  retire par LIGNE (style cartes Spark = 1 item SELECT/ligne) toute ligne dont `old_conversion_columns` est non
+  vide (inclut les dérivés mono-ligne type `cac_N` qui calculent `SUM(conversions_N)`), corrige la virgule
+  pendante avant FROM/UNION. **Câblé dans `migrate_dashboard_full.generate_card`** (après `apply_substitution`).
+  5 tests TDD, **suite 204→209**.
+- **SELF-SAFE (zéro régression)** : si une ligne retirée expose un **alias dérivé** encore référencé par une
+  ligne gardée (cartes **« KPIs evolution »** : `conversions_N` → `current_conversions_N`/`previous_…`/
+  `*_evolution` sur plusieurs CTE, avec CASE **multi-lignes** que le découpage par ligne ne sait pas suivre) →
+  **NO-OP** (on garde la version substituée = comportement actuel). Filet ultime en aval inchangé : `render_ok`
+  archive tout SQL cassé.
+- **Vérif live** : Violette 5161 (social-ad simple) → drop appliqué, **0 positionnelle**, rendu OK, **valeur
+  identique** (CONVERSIONS→PURCHASES 6910.42 = 6910.42). TuneCore 5709 (KPIs-evolution) → **no-op**, rend OK,
+  positionnel conservé (= aujourd'hui). 5 « solved » du lot 3 re-rendues OK via `/api/dataset` (familles
+  diverses : campaign, GA4 source/medium, by ad name, creative type, 2-dim).
+- **Impact mesuré (dry, sans mutation) sur le résidu du lot 3 : 5/10 tuiles deviennent Iron-Law-clean**
+  (Zeplug 50087 ; Violette 50099/50111/50112/50113). **5 différées** = KPIs-evolution / réfs dérivées
+  (Shining 50104 ; TuneCore 5709/29059 ; Violette 50114/50110). Les **futurs lots en bénéficient
+  automatiquement** (brique b est dans `generate_card`).
+- ⏳ **RESTE (follow-on)** : les cartes **KPIs-evolution** (current/previous/evolution, CASE multi-lignes,
+  N niveaux de CTE) nécessitent soit un parseur d'items SELECT multi-lignes avec **cascade d'alias** (fixpoint),
+  soit une **carte générique dédiée** « par X — KPIs evolution » (comme la famille mixte pour les tables simples).
+  Décision user requise pour prioriser. Tant que non fait : elles restent sur l'ancien (no-op sûr).

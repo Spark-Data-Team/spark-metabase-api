@@ -53,6 +53,29 @@ demande une STRATÉGIE de migration (ex. ne garder que les conversions nommées 
 état reconstruit en central) → consigne durcie « FOREGROUND, attendre, reporter » ; + `run_step` remonte
 désormais le stderr (point aveugle bascule levé).
 
+### Lot 3 — 2026-06-27 (6 clients proprement mappés, 7 dashboards)
+| Client | Copie(s) | État | Détail |
+|---|---|---|---|
+| **Dedikazio** | 26490 | **visible-100%** ✅ | 3 tuiles GA4 → fallback 50090/92/97 ; bascule TU ✅ (50085) |
+| **Dermalogica** | 26491 | **visible-100%** ✅ | idem 50091/94/96 ; bascule TU ✅ (50086) |
+| Shining | 26492 | résidu **table-large** | tableau by-date swappé 49104 ✅, 6010→50105 ✅ ; reste 791 « by campaign » + tuile 19 non mappée |
+| TuneCore | 26494 | résidu **table-large** | slots 0/1 migrés, bascule TU ✅ ; 3 cartes « Synthèse des performances » (5709, 29059, gén. 50107) gardent slots 2..N |
+| Zeplug | 26493 | **table-large + Gaby** | 1851→50088 ✅ ; by-date/campaign déversent 2..19 (2 conv réelles) ; tuile 19 non mappée ; pas de filtre période |
+| Violette_FR | 26495 (GA4) + 26496 (Global) | résidu **table-large** | slot 0 migré, bascule ✅ ; 6 cartes gén. gardent CONVERSIONS_n (50099 ; 50110-50114) |
+
+**Bilan lot 3 (avant brique b) : 2/6 visible-100%** (Dedikazio, Dermalogica = GA4 mono-conversion). 4/6 sur le
+patron TABLE-LARGE. Merge OK (tracker 43→50, +21 cartes générées). ⚠️ process : subagent TuneCore a re-backgroundé
+(3e fois) ; Violette interrompue en phase rapport (migration déjà finie) → état reconstruit en central via
+détecteur Iron-Law standalone, **pas de re-run** (zéro copie doublon).
+
+**➡️ APRÈS BRIQUE B (2026-06-27, codée + ré-appliquée au lot 3)** : `conv_lib.drop_conversion_selects` retire du
+SQL généré les slots NON mappés (Iron Law au niveau SQL, pas affichage) ; self-safe → no-op sur les cartes
+KPIs-evolution (cf. ANOMALIES « BRIQUE B »). **5 cartes générées résiduelles patchées en place** (Zeplug 50087 ;
+Violette 50099/50111/50112/50113) → rendu OK, 0 positionnelle, valeurs préservées. **Résultat : dashboards
+visible-100% 2 → 4** (+ **Zeplug 26493**, + **Violette GA4 26495**). Résidu restant = **5 tuiles, exclusivement
+KPIs-evolution / 2-dim** (Shining 50104 ; TuneCore 5709/29059 ; Violette 50114/50110) = le follow-on. Plus aucun
+résidu « table simple ». **Les futurs lots passent en 1 passe** (brique b est dans `generate_card`).
+
 ## Étape 3 — état strict (Iron Law)
 
 | Dashboard (copie) | Client | tuiles conv sur l'ancien | FINI (Iron Law) ? |

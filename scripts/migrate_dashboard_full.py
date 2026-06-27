@@ -44,11 +44,14 @@ def card_values(mb, card_id, client, window):
 
 def generate_card(mb, old_card, sub_map, coll_id, cmap=None):
     dq = json.loads(json.dumps(old_card["dataset_query"]))
+    # substitue les slots MAPPÉS (positionnel -> nommé) PUIS retire les slots NON mappés restants
+    # (brique b) -> la carte ne référence plus AUCUNE colonne positionnelle (Iron Law).
     for st in dq.get("stages", []) or []:
         if st.get("lib/type") == "mbql.stage/native":
-            st["native"] = conv_lib.apply_substitution(st["native"], sub_map)
+            st["native"] = conv_lib.drop_conversion_selects(conv_lib.apply_substitution(st["native"], sub_map))
     if dq.get("type") == "native":
-        dq["native"]["query"] = conv_lib.apply_substitution(dq["native"]["query"], sub_map)
+        dq["native"]["query"] = conv_lib.drop_conversion_selects(
+            conv_lib.apply_substitution(dq["native"]["query"], sub_map))
     viz = conv_lib.substitute_viz(old_card.get("visualization_settings") or {}, sub_map)  # préserve les libellés humains
     # titre générique (« Conversions ») -> conversion nommée (« Purchases ») ; libellé métier préservé
     if cmap and viz.get("card.title"):
