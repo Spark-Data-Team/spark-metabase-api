@@ -1,8 +1,8 @@
 # Migration conversions — SUIVI (généré, ne pas éditer à la main)
 
 > Source : `migration/conv-migration-tracker.json` · régénérer : `conv_tracker.py --render`.
-> Ancre de campagne : `[conv-2026-06]`. **99 dashboards** · 96 taggés · 0 anciens archivés.
-> Clients : Pro Nutrition (4), Goodiespub (4), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4), Arrago (2), HomeExchange (4), Merci Walter (2), Walter (2), Yooji (3), Zenchef (3).
+> Ancre de campagne : `[conv-2026-06]`. **124 dashboards** · 121 taggés · 0 anciens archivés.
+> Clients : Pro Nutrition (4), Goodiespub (4), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4), Arrago (2), HomeExchange (4), Merci Walter (2), Walter (2), Yooji (4), Zenchef (3), Comptastar (7), Fauré Le Page (7), Gamin Tout Terrain (1), Redesk (1), Richardson (1), Steel Shed Solutions (6), Figaret (1).
 
 Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:true` (opt-in pour archiver l'ancien) · `old_archived` (ancien archivé). L'archivage des anciens est piloté par `archive_superseded.py` et ne touche QUE les lignes `archive_old:true`.
 
@@ -107,3 +107,28 @@ Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:tr
 | Zenchef | Zenchef \| Performances Globales | 26600 | 9932 | ✅ | migré | — | — |  |
 | Zenchef | Zenchef \| SEA Performances par campagne, adgroup & keyword | 26601 | 9934 | ✅ | migré | — | — |  |
 | Zenchef | Zenchef \| Social Performances | 26622 | 9935 | ✅ | migré | — | — |  |
+| Comptastar | Global - Comptastar - Lead | 26726 | 411 | ✅ | migré | — | — |  |
+| Comptastar | Fb Lead Gen \| Comptastar | 26727 | 682 | ✅ | migré | — | — |  |
+| Comptastar | Produits - Comptastar | 26728 | 6789 | ✅ | migré | — | — |  |
+| Comptastar | Ad, Adsets Performances_All dim | 26729 | 8901 | ✅ | migré | — | — |  |
+| Comptastar | Leviers \| Comptastar - VF | 26730 | 9627 | ✅ | migré | — | — |  |
+| Comptastar | Annonce & Adset - Comptastar | 26731 | 9727 | ✅ | migré | — | — |  |
+| Comptastar | Global - Comptastar - Purchase | 26732 | 13059 | ✅ | migré | — | — |  |
+| Fauré Le Page | Global \| Fauré Le Page | 26733 | 194 | ✅ | migré | — | — |  |
+| Fauré Le Page | Google \| Fauré Le Page - Global Perf | 26734 | 6988 | ✅ | migré | — | — |  |
+| Fauré Le Page | TikTok -  Global Perf \| Fauré Le Page | 26735 | 10947 | ✅ | migré | — | — |  |
+| Fauré Le Page | Global \| Fauré le Page | 26736 | 11858 | ✅ | migré | — | — |  |
+| Fauré Le Page | Leviers \| Fauré le Page | 26737 | 11859 | ✅ | migré | — | — |  |
+| Fauré Le Page | Campagnes \| Fauré le Page | 26738 | 11860 | ✅ | migré | — | — |  |
+| Gamin Tout Terrain | Home \| GTT | 26739 | 14511 | ✅ | migré | — | — |  |
+| Redesk | Global - Redesk | 26741 | 20616 | ✅ | migré | — | — |  |
+| Richardson | Mattout \| Performances Globales | 26740 | 15999 | ✅ | migré | — | — |  |
+| Steel Shed Solutions | Facebook Global \| BMC (Steel Shed Solutions) | 26689 | 436 | ✅ | migré | — | — |  |
+| Steel Shed Solutions | Home - Steel Shed Solutions | 26721 | 529 | ✅ | migré | — | — |  |
+| Steel Shed Solutions | Leadgen Social - Steel Shed Solutions | 26722 | 10882 | ✅ | migré | — | — |  |
+| Steel Shed Solutions | Leadgen - standard dash | 26723 | 11952 | ✅ | migré | — | — |  |
+| Steel Shed Solutions | Ecomm - standard dash | 26724 | 12961 | ✅ | migré | — | — |  |
+| Steel Shed Solutions | Lead Generation - All Data | 26725 | 24975 | ✅ | migré | — | — |  |
+| Fauré Le Page | Consideration \| Fauré le Page | 26745 | 13852 | ✅ | migré | — | — |  |
+| Figaret | Global \| Figaret | 26743 | 15336 | ✅ | migré | — | — |  |
+| Yooji | Global - Yooji Blended | 26744 | 14313 | ✅ | migré | — | — |  |

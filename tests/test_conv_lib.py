@@ -662,7 +662,24 @@ def test_value_diffs_skips_missing_column():
     assert conv_lib.value_diffs(oc, [["a", 1]], nc, [["a"]], {"CONVERSIONS": "PURCHASES"}) == []
 
 
+def test_has_dashboard_questions_detects_embedded_card():
+    dash = {"dashcards": [{"card": {"id": 1}}, {"card": {"id": 2, "dashboard_id": 99}}]}
+    assert conv_lib.has_dashboard_questions(dash) is True
+
+
+def test_has_dashboard_questions_false_when_none():
+    dash = {"dashcards": [{"card": {"id": 1}}, {"card": {"id": 2, "dashboard_id": None}}]}
+    assert conv_lib.has_dashboard_questions(dash) is False
+
+
+def test_has_dashboard_questions_handles_ordered_cards_and_missing_card():
+    assert conv_lib.has_dashboard_questions({"ordered_cards": [{"card": {}}, {}]}) is False
+    assert conv_lib.has_dashboard_questions({}) is False
+
+
 TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
+         test_has_dashboard_questions_detects_embedded_card, test_has_dashboard_questions_false_when_none,
+         test_has_dashboard_questions_handles_ordered_cards_and_missing_card,
          test_drop_conversion_selects_removes_unmapped_positional,
          test_drop_conversion_selects_noop_when_no_positional,
          test_drop_conversion_selects_keeps_named_columns_around_dropped,

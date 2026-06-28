@@ -391,6 +391,14 @@ def drop_conversion_selects(sql):
     return result
 
 
+def has_dashboard_questions(dash):
+    """True si le dashboard contient des « Dashboard Questions » (cartes intégrées AU dashboard,
+    repérées par `card.dashboard_id` renseigné). Metabase REFUSE alors la copie shallow
+    (`is_deep_copy:false`) → il faut une deep copy. Pur."""
+    dcs = (dash or {}).get("dashcards") or (dash or {}).get("ordered_cards") or []
+    return any((dc.get("card") or {}).get("dashboard_id") for dc in dcs)
+
+
 def _close(a, b, tol=1e-6):
     if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
         return a == b

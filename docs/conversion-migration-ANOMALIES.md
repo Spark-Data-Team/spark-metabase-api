@@ -343,3 +343,12 @@
    **400 « cannot do a shallow copy because it contains Dashboard Questions »**. Le shallow est imposé (liens
    Nanga). **Figaret 15336 reporté** (cas spécial : deep copy — mais duplique les questions intégrées — ou
    traitement manuel). À évaluer : combien de dashboards 317 ont des Dashboard Questions ?
+
+   ✅ **RÉSOLU (2026-06-28)** : détection `conv_lib.has_dashboard_questions(dash)` (carte de dashcard avec
+   `card.dashboard_id` renseigné ; 3 tests TDD, suite **220**) → `migrate_client` bascule en **deep copy**
+   automatiquement pour ces dashboards. Vérifié end-to-end : Figaret 15336 → copie 26743 [deep] → **100%** ;
+   Fauré 13852 → 26745 → **100%** ; Yooji 14313 → 26744 (migré, 2 résidus Gaby hors-DQ). **Scan prévalence :
+   11/500 dashboards ont des DQ (2,2%)** — `migration/dq-scan.json` : 900.care (11863/18009/18241), Absolut
+   Cashmere 18406, LocaBoat 19792, Lunii (8274/20848), Canopea 18438, + les 3 déjà faits. **Les futurs lots les
+   gèrent en 1 passe** (deep copy auto). ⚠️ la deep copy DUPLIQUE toutes les cartes du dashboard dans 14016
+   (staging) — OK pour la validation ; à l'étape PROD, ces dashboards seront édités EN PLACE (pas de copie).
