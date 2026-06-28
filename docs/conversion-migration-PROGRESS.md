@@ -98,6 +98,21 @@ restant**. Quelques autres : swaps bloqués sur écart-valeur (Pulse → revue, 
 > (l'user les gère à la main). Les 5 copies Vestiaire du lot 4 + 8 cartes générées ont été **archivées** ;
 > worklist 100→**98**, tracker −5, shard Vestiaire sorti de `parallel/`. cf. memory `conv-migration-special-no-copy-clients`.
 
+### Lot 5 — 2026-06-28 (6 clients ; central SÉQUENTIEL après échec 6-concurrents)
+| Client | visible-100% | Note |
+|---|---|---|
+| **G-Heat** | **3/3** ✅ | parfait (slot 0 propre ; cascade+brique b+bascule en 1 passe) |
+| **Goodiespub** | 1/2 | Home : 1 résidu |
+| **Reputation** | 0/4 | petits résidus (slot 1 conflit + KPIs-evo) |
+| **BYmyCAR** | 0/5 | gros résidu **Gaby** (slot 0 = CONFLICT) + 3 À REVOIR |
+| **Distingo Bank** | 0/3 | gros résidu **Gaby** (slot 0 = CONFLICT) + 1 À REVOIR |
+| Figaret | — | 15336 = **Dashboard Questions** → copie shallow refusée (cas spécial, reporté) |
+
+**4/17 visible-100%** (taux tiré par BYmyCAR/Distingo, slot 0 conflit = Gaby). Merge tracker 66→**83**. **Garde-fou
+valeur validé en prod** : 4 tuiles → À REVOIR (ex. BYmyCAR CURRENT_CONVERSIONS_5 1907 vs 218). 3 cas limites (cf.
+ANOMALIES « lot 5 ») : worklist mal attribuée (Figaret→Absolut Cashmere/Canopea, **corrigé**) ; 6-concurrents →
+405 (→ **séquentiel**) ; Dashboard Questions → shallow copy KO.
+
 ## Étape 3 — état strict (Iron Law)
 
 | Dashboard (copie) | Client | tuiles conv sur l'ancien | FINI (Iron Law) ? |

@@ -318,3 +318,28 @@
 - Décision : on ne les balaie pas (l'user les gère à la main). Faits : worklist 100→98, tracker −5 (Vestiaire),
   generated-cards −8, shard sorti de `parallel/` → `_excluded_shards/`. **5 copies Vestiaire (lot 4) + 8 cartes
   générées ARCHIVÉES.** cf. memory `conv-migration-special-no-copy-clients`.
+
+---
+
+## Lot 5 — 2026-06-28 · BYmyCAR, Distingo Bank, Goodiespub, G-Heat, Reputation, Figaret
+
+### ✅ Résultat (garde-fou valeur + cascade validés EN PROD)
+- **4/17 dashboards visible-100%** (G-Heat **3/3** parfait ; Goodiespub Pilotage). BYmyCAR/Distingo : gros résidu
+  **Gaby** car leur **slot 0 (conversion principale) = CONFLICT** → la plupart des cartes attendent le team lead.
+  Reputation : petits résidus (slot 1 conflit + KPIs-evo).
+- **Garde-fou valeur OPÉRATIONNEL** : 4 tuiles → « ⚠️ À REVOIR » au lieu de migrer en silence (BYmyCAR
+  CURRENT_CONVERSIONS_5 **1907 vs 218** ; CAC_5 2134 vs 1189 ; Distingo 6014 CAC_6 0 vs 285). Merge tracker 66→83.
+
+### 🐛 PROCESS / DATA — 3 cas limites
+1. **6 runs SIMULTANÉS → 405 « Authentication failed »** (saturation nginx/Metabase ; `AttributeError 'bool'`
+   en cascade car `mb.get` renvoie False). + un **subagent qui rend la main TUE son background** (runs coupés à
+   ~1 dash). **FIX : central lance les runs en SÉQUENTIEL** (1 tâche background `set +e` qui enchaîne) → 0 échec.
+   cf. PARALLEL.md « EXÉCUTION ».
+2. **🚨 WORKLIST MAL ATTRIBUÉE** : « Figaret » contenait **18406 (collection Absolut Cashmere)** & **18438
+   (collection Canopea Paris)** — dashboards d'AUTRES clients. La COLLECTION fait foi (`/api/collection/<id>`).
+   **Corrigé** : Figaret→[15336] ; 18406→Absolut Cashmere ; 18438→nouveau client Canopea. → **audit worklist
+   recommandé** (vérifier collection-name ≈ client pour les 99). Les 5 autres clients du lot étaient OK.
+3. **DASHBOARD QUESTIONS → copie shallow refusée** : `POST /api/dashboard/15336/copy {is_deep_copy:false}` →
+   **400 « cannot do a shallow copy because it contains Dashboard Questions »**. Le shallow est imposé (liens
+   Nanga). **Figaret 15336 reporté** (cas spécial : deep copy — mais duplique les questions intégrées — ou
+   traitement manuel). À évaluer : combien de dashboards 317 ont des Dashboard Questions ?

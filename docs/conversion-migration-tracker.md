@@ -1,8 +1,8 @@
 # Migration conversions — SUIVI (généré, ne pas éditer à la main)
 
 > Source : `migration/conv-migration-tracker.json` · régénérer : `conv_tracker.py --render`.
-> Ancre de campagne : `[conv-2026-06]`. **66 dashboards** · 63 taggés · 0 anciens archivés.
-> Clients : Pro Nutrition (4), Goodiespub (2), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4).
+> Ancre de campagne : `[conv-2026-06]`. **83 dashboards** · 80 taggés · 0 anciens archivés.
+> Clients : Pro Nutrition (4), Goodiespub (4), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4).
 
 Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:true` (opt-in pour archiver l'ancien) · `old_archived` (ancien archivé). L'archivage des anciens est piloté par `archive_superseded.py` et ne touche QUE les lignes `archive_old:true`.
 
@@ -74,3 +74,20 @@ Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:tr
 | Sports d'époque | Levier & Campagnes \| Sports D'Époque | 26530 | 6835 | ✅ | migré | — | — |  |
 | Sports d'époque | Meta - Focus annonces et formats \| Sports d'Epoque | 26534 | 9936 | ✅ | migré | — | — |  |
 | Sports d'époque | Global \| Canopea Paris | 26538 | 18999 | ✅ | migré | — | — |  |
+| BYmyCAR | Lead Gen (Multichannel) \| BYmyCAR | 26567 | 2761 | ✅ | migré | — | — |  |
+| BYmyCAR | Lead Gen Details \| BYmyCAR | 26568 | 3024 | ✅ | migré | — | — |  |
+| BYmyCAR | GAds - Performance max | 26569 | 8670 | ✅ | migré | — | — |  |
+| BYmyCAR | Lead Gen (Multichannel) \| BYmyCAR - B2B | 26570 | 17745 | ✅ | migré | — | — |  |
+| BYmyCAR | Lead Gen (Multichannel) \| BYmyCAR - Avec évolution | 26571 | 21111 | ✅ | migré | — | — |  |
+| Distingo Bank | PSA Banque \| Paid Global | 26572 | 6729 | ✅ | migré | — | — |  |
+| Distingo Bank | PSA Banque \| SEA Performances par campagne, adgroup & keyword | 26573 | 6731 | ✅ | migré | — | — |  |
+| Distingo Bank | PSA Banque \| Breakdown par conversion | 26574 | 8374 | ✅ | migré | — | — |  |
+| G-Heat | Shopify  - Overview template \| G-Heat | 26577 | 11738 | ✅ | migré | — | — |  |
+| G-Heat | Ads & Audiences Analysis \| G-Heat | 26578 | 11849 | ✅ | migré | — | — |  |
+| G-Heat | Reporting SEO \| G-Heat  | 26579 | 20022 | ✅ | migré | — | — |  |
+| Goodiespub | Goodies Pub \| Pilotage | 26575 | 12716 | ✅ | migré | — | — |  |
+| Goodiespub | Goodies Pub \| Home | 26576 | 12734 | ✅ | migré | — | — |  |
+| Reputation | Performances Globales | 26580 | 5038 | ✅ | migré | — | — |  |
+| Reputation | Performances \| Google Ads | 26581 | 7216 | ✅ | migré | — | — |  |
+| Reputation | Performances multichannel \| Reputation | 26582 | 8175 | ✅ | migré | — | — |  |
+| Reputation | Performances \| LinkedIn | 26583 | 8637 | ✅ | migré | — | — |  |
