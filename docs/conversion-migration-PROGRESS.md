@@ -113,6 +113,14 @@ valeur validé en prod** : 4 tuiles → À REVOIR (ex. BYmyCAR CURRENT_CONVERSIO
 ANOMALIES « lot 5 ») : worklist mal attribuée (Figaret→Absolut Cashmere/Canopea, **corrigé**) ; 6-concurrents →
 405 (→ **séquentiel**) ; Dashboard Questions → shallow copy KO.
 
+### Lot 6 — 2026-06-28 (6 clients ; pré-check attribution par lot)
+- **Pré-check rentabilisé** : a écarté 3 dashboards croisés AVANT migration (Merci Walter 18174→Hugy ;
+  Zenchef 9933+21314→Chilowé ; 9933 nommé « Zenchef » mais dans la collection Chilowé). Worklist corrigée.
+- **Walter 2/2 ✅, Merci Walter 2/2 ✅** (parfaits). **Yooji 2/3** (14313 copie KO = Dashboard Questions).
+  **HomeExchange/Zenchef/Arrago** : résidu Gaby (slots principaux flous ; HomeExchange leadgen 76/79 tuiles).
+- Garde-fou valeur : 4 tuiles → À REVOIR. Merge tracker 83→**99**.
+- ⚠️ **Dashboard Questions = 2e occurrence** (Figaret 15336, Yooji 14313) → copie shallow refusée, à traiter.
+
 ## Étape 3 — état strict (Iron Law)
 
 | Dashboard (copie) | Client | tuiles conv sur l'ancien | FINI (Iron Law) ? |

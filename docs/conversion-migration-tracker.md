@@ -1,8 +1,8 @@
 # Migration conversions — SUIVI (généré, ne pas éditer à la main)
 
 > Source : `migration/conv-migration-tracker.json` · régénérer : `conv_tracker.py --render`.
-> Ancre de campagne : `[conv-2026-06]`. **83 dashboards** · 80 taggés · 0 anciens archivés.
-> Clients : Pro Nutrition (4), Goodiespub (4), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4).
+> Ancre de campagne : `[conv-2026-06]`. **99 dashboards** · 96 taggés · 0 anciens archivés.
+> Clients : Pro Nutrition (4), Goodiespub (4), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4), Arrago (2), HomeExchange (4), Merci Walter (2), Walter (2), Yooji (3), Zenchef (3).
 
 Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:true` (opt-in pour archiver l'ancien) · `old_archived` (ancien archivé). L'archivage des anciens est piloté par `archive_superseded.py` et ne touche QUE les lignes `archive_old:true`.
 
@@ -91,3 +91,19 @@ Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:tr
 | Reputation | Performances \| Google Ads | 26581 | 7216 | ✅ | migré | — | — |  |
 | Reputation | Performances multichannel \| Reputation | 26582 | 8175 | ✅ | migré | — | — |  |
 | Reputation | Performances \| LinkedIn | 26583 | 8637 | ✅ | migré | — | — |  |
+| Arrago | Suivi des conversions \| Arrago | 26655 | 12862 | ✅ | migré | — | — |  |
+| Arrago | Reporting SEO \| Arrago | 26688 | 14780 | ✅ | migré | — | — |  |
+| HomeExchange | Leadgen - global perf template (multichannel) \| Home Exchange | 26596 | 10650 | ✅ | migré | — | — |  |
+| HomeExchange | Leadgen - global perf template (multichannel) - Home Exchange Collection | 26597 | 14183 | ✅ | migré | — | — |  |
+| HomeExchange | Comparaison YoY - HomeExchange | 26598 | 15501 | ✅ | migré | — | — |  |
+| HomeExchange | Leadgen - global perf template (multichannel) \| Home Exchange - 2 | 26599 | 21078 | ✅ | migré | — | — |  |
+| Merci Walter | Global Overview - Duplicate | 26594 | 13029 | ✅ | migré | — | — |  |
+| Merci Walter | Shopify  - Overview template | 26595 | 13356 | ✅ | migré | — | — |  |
+| Walter | Homepage Performance \| Walter | 26592 | 20682 | ✅ | migré | — | — |  |
+| Walter | Homepage Performance \| Walter FR | 26593 | 21705 | ✅ | migré | — | — |  |
+| Yooji | Home - Yooji specific | 26589 | 13818 | ✅ | migré | — | — |  |
+| Yooji | Equity - Yooji Specific | 26590 | 13918 | ✅ | migré | — | — |  |
+| Yooji | 2. Leviers \| Yooji | 26591 | 16921 | ✅ | migré | — | — |  |
+| Zenchef | Zenchef \| Performances Globales | 26600 | 9932 | ✅ | migré | — | — |  |
+| Zenchef | Zenchef \| SEA Performances par campagne, adgroup & keyword | 26601 | 9934 | ✅ | migré | — | — |  |
+| Zenchef | Zenchef \| Social Performances | 26622 | 9935 | ✅ | migré | — | — |  |
