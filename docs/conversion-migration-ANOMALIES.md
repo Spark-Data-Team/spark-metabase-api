@@ -238,3 +238,83 @@
   N niveaux de CTE) nécessitent soit un parseur d'items SELECT multi-lignes avec **cascade d'alias** (fixpoint),
   soit une **carte générique dédiée** « par X — KPIs evolution » (comme la famille mixte pour les tables simples).
   Décision user requise pour prioriser. Tant que non fait : elles restent sur l'ancien (no-op sûr).
+
+---
+
+## Lot 4 — 2026-06-27 · Lutèce, France Toner, Pulse Protein, My Blend, Sports d'époque, Vestiaire Collective
+
+### ✅ Résultat (1er lot AVEC brique b dès la 1re passe)
+- **7/21 dashboards visible-100% en une seule passe** (Lutèce 26523 ; France Toner 26532/26533 ; Pulse 26529 ;
+  My Blend 26531 ; Sports 26527/26534). Brique b nettoie les tables simples sans intervention. Merge OK
+  (tracker 50→71, +42 cartes générées, 168 total).
+- Bonus : **#87 déployé + vérifié** sur Sports 26534 (cost fidèle, purchases/clicks injectés).
+
+### 🔎 DONNÉE CLÉ — la KPIs-evolution est le RÉSIDU DOMINANT (prévalence confirmée élevée)
+- Sur tous les clients à perf-tables, le résidu restant est **massivement** des cartes « **KPIs … w/ evolution** »
+  (current/previous/evolution) : **Vestiaire 5/5 dashboards** (28126/28154/28157/28161, KPIs multi-dim),
+  Sports (50202/50203), My Blend (50173/50176/5940/5709), France Toner (50175), Pulse (50226).
+- → **Justifie le follow-on KPIs-evolution** (cf. entrée BRIQUE B « RESTE »). C'est désormais le **bottleneck #1**
+  pour atteindre strict-100% sur les clients réels. À trancher : **carte(s) générique(s) dédiée(s) « par X — KPIs
+  evolution »** (route via swap_tables, SQL propre garanti) **vs parseur cascade multi-lignes**. La carte
+  générique est plus sûre (pas de chirurgie SQL sur 645 lignes) mais demande de créer la famille dans 11673.
+
+### 🧩 Autres résidus (minoritaires, non KPIs-evolution)
+- **Swaps bloqués sur écart-valeur → REVUE** (policy user 2026-06-26) : Pulse 26525 (écart de **lignes** :
+  jeux de campagnes différents DISPLAY/FB/PMAX…), Pulse 26536 (écart **valeur** ~15-18% sur
+  AVG_PURCHASES_VALUE / PURCHASES_VALUE). Routage : mapping vraiment différent → consultant ; bug data → user.
+- **Fallback KO archivé** : Pulse 15402 « PMax search terms performances » (généré 50170 → rendu KO → archivé →
+  reste sur l'ancien ; pas de régression).
+- **Stragglers combos/2-dim** : My Blend 26537 cartes **25 « Conversions by channel »** + **55 « Revenue by
+  channel »** (probables combos multi-conversion / 2-dim, tâche #4 RESUME, pas encore outillée).
+
+### ⚠️ PROCESS — le Bash AUTO-BACKGROUNDE les commandes longues (cause racine du « backgrounding »)
+- Découverte : ce n'est PAS un choix des subagents — le **Bash tool met en arrière-plan** les commandes longues
+  et notifie à la fin. Les subagents qui « rendaient la main trop tôt » subissaient ça. Effet de bord : le
+  subagent **My Blend** a vu son run coupé à **3/4 dashboards** (timeout d'attente côté subagent) ; le 4e
+  (22167 → copie **26543**, « Campagnes | Séfia ») a été **complété en central** (même shard, `--dashboards 22167`,
+  pas de doublon). Aucun process actif au moment du merge (vérifié).
+- Reco : pour les clients à **≥5 dashboards** (ou run long), soit découper en sous-lots de dashboards, soit
+  prévoir la **reprise en central par dashboard manquant** (ce qui a marché ici). État toujours reconstructible
+  via le détecteur Iron-Law standalone + le shard.
+
+---
+
+## 2026-06-28 · Brique b CASCADE (KPIs-evolution) + GARDE-FOU VALEUR + règle Vestiaire/Polène
+
+### 🧩 Brique b — CASCADE multi-lignes (follow-on KPIs-evolution CODÉ)
+- `conv_lib.drop_conversion_selects` ré-écrit en **parseur SELECT-aware + cascade d'alias (fixpoint)** :
+  parse les listes SELECT (entre `SELECT` et son `FROM` au même niveau de parenthèses), découpe les items
+  sur les virgules de niveau 0 (items CASE **multi-lignes** gérés d'un bloc), retire tout item référençant
+  un nom « tué », et **propage** : l'alias d'un item retiré rejoint l'ensemble tué → retire aussi
+  `current_conversions_N` / `previous_…` / `*_evolution` / `cac_N` / `cr_N` sur tous les CTE. Helpers :
+  `_mask_sql` (littéraux + commentaires), `_select_spans`, `_split_top_level`, `_refs_any`, `_select_item_alias`.
+- Self-safe (pur, zéro régression) : no-op si liste vidée / positionnelle restante / **réf pendante** vers un
+  alias supprimé. Filet aval inchangé (render_ok). **+3 tests TDD** (passthrough dérivé, CASE multi-lignes,
+  préservation du cascade d'un slot MAPPÉ).
+- Vérif live : **My Blend 5940** (KPIs-evolution) → 0 positionnelle, rendu OK, valeur exacte (114.6) ✅ ;
+  cascade **value-preserving** (substitué-seul == substitué+cascade sur TuneCore : 11961.14 dans les deux).
+- Limite connue : **Vestiaire** échoue au rendu sur `ambiguous column SIGN_UPS` = bug de **substitution**
+  préexistant (le nommé existe dans 2 tables jointes), indépendant de la cascade (Vestiaire désormais exclu).
+
+### 🛡️ GARDE-FOU VALEUR dans generate_fallback (policy user « écart de valeur → revue », enfin appliquée)
+- **Découverte** : `generate_fallback` migrait les substitutions SANS vérifier les valeurs (≠ swap_tables).
+  Quand le nommé compte AUTREMENT que le positionnel, la valeur changeait **silencieusement** (déjà le cas
+  sur des cartes des lots 1-4). Ex. **TuneCore 5709** : CONVERSIONS(positionnel) 12381 vs PURCHASES(nommé)
+  11961 ; CONVERSIONS_1 10085 vs SIGN_UPS 8809 — **même classe que Toploc** (définition du nommé ≠ positionnel,
+  question DATA, pas un bug outil).
+- **Fix** : `conv_lib.value_diffs` (pur, compare les **SOMMES** par colonne → indépendant de l'ordre ; +6 tests)
+  + `generate_fallback.value_review` (lance carte originale & générée, compare). Écart → carte archivée, tuile
+  **gardée sur l'ancien**, rapport **« ⚠️ À REVOIR (écart valeur …) »**. Non vérifiable (param requis) → bénéfice
+  du doute (comme render_ok).
+- **Subtilité corrigée** : comparer via `sub_map` (CONVERSIONS→PURCHASES) ratait les cartes KPIs-evolution
+  (colonne de sortie = `current_conversions`, alias préservé). Donc on compare **toutes les colonnes communes**
+  (nom préservé) **+** les renommées (sub_map). Les non-conversion (cost/clicks) ont une somme identique → 0
+  faux positif. Vérifié : **TuneCore BLOQUÉ→revue** (CAC/CONV_VALUE dérivés divergent), My Blend & Violette
+  **migrés (fidèles)**. **Suite 217 verte.**
+- ⚠️ Effet : sur les clients où positionnel≠nommé, plus de cartes resteront « À REVOIR » (= comportement voulu,
+  on ne pousse plus de valeurs douteuses). Routage : mapping vraiment différent → consultant ; bug data → user.
+
+### 🚫 RÈGLE SPÉCIALE — Vestiaire Collective & Polène EXCLUS du balayage (user)
+- Décision : on ne les balaie pas (l'user les gère à la main). Faits : worklist 100→98, tracker −5 (Vestiaire),
+  generated-cards −8, shard sorti de `parallel/` → `_excluded_shards/`. **5 copies Vestiaire (lot 4) + 8 cartes
+  générées ARCHIVÉES.** cf. memory `conv-migration-special-no-copy-clients`.

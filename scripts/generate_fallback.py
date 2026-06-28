@@ -76,6 +76,56 @@ def render_ok(mb, cid, client):
     return True  # timeout/incomplet -> bénéfice du doute (struct. cohérent)
 
 
+VALUE_WINDOW = "2026-05-01~2026-05-31"  # fenêtre épinglée pour la vérif valeur (≈ swap_tables)
+
+
+def _run_card(mb, card_obj, client, window=VALUE_WINDOW):
+    """Exécute une carte (params client + fenêtre + brand inerte + number requis=0) et renvoie
+    (cols, rows) ou (None, None) si non exécutable (param requis manquant, KO) -> non vérifiable."""
+    _, tags = conv_lib.native_and_tags(card_obj)
+    params = []
+    if "clients" in tags:
+        params.append({"type": "string/=", "value": [client], "target": ["dimension", ["template-tag", "clients"]]})
+    if "client" in tags:
+        wt = (tags.get("client") or {}).get("widget-type") or "string/="
+        params.append({"type": wt, "value": [client], "target": ["dimension", ["template-tag", "client"]]})
+    if "date" in tags:
+        params.append({"type": "date/all-options", "value": window, "target": ["dimension", ["template-tag", "date"]]})
+    if "brand_included" in tags:
+        params.append({"type": "category", "value": ["yes"], "target": ["dimension", ["template-tag", "brand_included"]]})
+    for tn, t in (tags or {}).items():
+        if (t or {}).get("type") == "number" and (t or {}).get("default") in (None, ""):
+            params.append({"type": "number/=", "value": 0, "target": ["variable", ["template-tag", tn]]})
+    r = mb.post("/api/dataset", "raw", json={**card_obj["dataset_query"], "parameters": params}, timeout=300)
+    try:
+        b = r.json() if r.text else {}
+    except Exception:
+        b = {}
+    if not isinstance(b, dict) or b.get("status") != "completed":
+        return None, None
+    return [c["name"] for c in b["data"]["cols"]], b["data"]["rows"]
+
+
+def value_review(mb, old_card, gen_id, client, sub_map):
+    """Garde-fou VALEUR (policy user « écart de valeur → revue »), absent jusqu'ici de generate_fallback :
+    compare la carte GÉNÉRÉE (nommé) vs ORIGINALE (positionnel). Renvoie les écarts (conv_lib.value_diffs)
+    — vide si fidèle OU si non vérifiable (bénéfice du doute, comme render_ok).
+
+    Deux familles de colonnes comparées : (1) les colonnes RENOMMÉES par la substitution (sub_map :
+    CONVERSIONS→PURCHASES — cas des cartes simples) ; (2) les colonnes au nom PRÉSERVÉ communes aux deux
+    (ex. `current_conversions` des cartes KPIs-evolution : l'alias garde `conversions` mais l'expression
+    sous-jacente passe à purchases → seule la valeur change). Les colonnes non-conversion (cost, clicks…)
+    sont identiques (même SQL) → somme égale → aucun faux positif."""
+    ocols, orows = _run_card(mb, old_card, client)
+    ncols, nrows = _run_card(mb, mb.get(f"/api/card/{gen_id}"), client)
+    if ocols is None or ncols is None:
+        return []
+    common = {str(c).upper() for c in ocols} & {str(c).upper() for c in ncols}
+    cmp_map = {c: c for c in common}   # noms préservés (KPIs-evolution: current_conversions…)
+    cmp_map.update(sub_map)            # noms renommés (simples: CONVERSIONS→PURCHASES)
+    return conv_lib.value_diffs(ocols, orows, ncols, nrows, cmp_map)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--copy", type=int, required=True)
@@ -108,12 +158,22 @@ def main():
         gen_id = reg.get(key)
         if not gen_id and args.yes:
             gen_id = generate_card(mb, card, sub_map, GEN_COLL, cmap)
-            if gen_id and render_ok(mb, gen_id, args.client):
-                reg[key] = gen_id
-            elif gen_id:
+            if gen_id and not render_ok(mb, gen_id, args.client):
                 mb.put(f"/api/card/{gen_id}", "raw", json={"archived": True})
                 report.append((cid, card.get("name"), f"⛔ généré {gen_id} mais rendu KO → archivé"))
                 new_dcs.append(dc); continue
+            if gen_id:
+                # GARDE-FOU VALEUR (policy user) : nommé vs positionnel par slot mappé. Écart -> on NE
+                # migre PAS (carte archivée, tuile gardée sur l'ancien) et on flague pour REVUE.
+                vd = value_review(mb, card, gen_id, args.client, sub_map)
+                if vd:
+                    mb.put(f"/api/card/{gen_id}", "raw", json={"archived": True})
+                    ex = vd[0]
+                    report.append((cid, card.get("name"),
+                                   f"⚠️ À REVOIR (écart valeur {ex[0]}→{ex[1]} : {round(ex[2], 2)} vs {round(ex[3], 2)}) "
+                                   f"— gardé sur l'ancien"))
+                    new_dcs.append(dc); continue
+                reg[key] = gen_id
         if not gen_id:
             report.append((cid, card.get("name"), f"(dry) substituable: {sub_map}" + (f" | non mappé {unmapped}" if unmapped else "")))
             new_dcs.append(dc); continue

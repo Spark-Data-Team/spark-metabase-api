@@ -1,8 +1,8 @@
 # Migration conversions — SUIVI (généré, ne pas éditer à la main)
 
 > Source : `migration/conv-migration-tracker.json` · régénérer : `conv_tracker.py --render`.
-> Ancre de campagne : `[conv-2026-06]`. **50 dashboards** · 47 taggés · 0 anciens archivés.
-> Clients : Pro Nutrition (4), Goodiespub (2), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1).
+> Ancre de campagne : `[conv-2026-06]`. **66 dashboards** · 63 taggés · 0 anciens archivés.
+> Clients : Pro Nutrition (4), Goodiespub (2), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4).
 
 Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:true` (opt-in pour archiver l'ancien) · `old_archived` (ancien archivé). L'archivage des anciens est piloté par `archive_superseded.py` et ne touche QUE les lignes `archive_old:true`.
 
@@ -58,3 +58,19 @@ Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:tr
 | Violette_FR | Google Analytics \| Violette_FR | 26495 | 6524 | ✅ | migré | — | — |  |
 | Violette_FR | Global \| Violette FR | 26496 | 6885 | ✅ | migré | — | — |  |
 | Zeplug | Zeplug \| Dashboard | 26493 | 17680 | ✅ | migré | — | — |  |
+| France Toner | Perfs Google \| FT | 26524 | 12960 | ✅ | migré | — | — |  |
+| France Toner | Global \| France Toner | 26532 | 13950 | ✅ | migré | — | — |  |
+| France Toner | SEOxSEA synergies template \| France Toner | 26533 | 14911 | ✅ | migré | — | — |  |
+| Lutèce Cosmetics | Lutèce Cosmetics - Funnel by campaign | 26523 | 25401 | ✅ | migré | — | — |  |
+| My Blend | Campagnes \| MyBlend | 26526 | 11875 | ✅ | migré | — | — |  |
+| My Blend | Global \| MyBlend | 26531 | 11876 | ✅ | migré | — | — |  |
+| My Blend | Leviers \| MyBlend | 26537 | 11877 | ✅ | migré | — | — |  |
+| My Blend | Campagnes \| Séfia | 26543 | 22167 | ✅ | migré | — | — |  |
+| Pulse Protein | Google Ads - Performance Max Template \| Pulse Protein | 26525 | 22035 | ✅ | migré | — | — |  |
+| Pulse Protein | E-commerce Multi-Channel Performance Template  | 26529 | 22068 | ✅ | migré | — | — |  |
+| Pulse Protein | TikTok -  Global Perf \| Pulse Protein | 26536 | 23223 | ✅ | migré | — | — |  |
+| Pulse Protein | E-commerce Campaign Performance Template - Pulse | 26539 | 24147 | ✅ | migré | — | — |  |
+| Sports d'époque | Global \| Sports D'Époque | 26527 | 266 | ✅ | migré | — | — |  |
+| Sports d'époque | Levier & Campagnes \| Sports D'Époque | 26530 | 6835 | ✅ | migré | — | — |  |
+| Sports d'époque | Meta - Focus annonces et formats \| Sports d'Epoque | 26534 | 9936 | ✅ | migré | — | — |  |
+| Sports d'époque | Global \| Canopea Paris | 26538 | 18999 | ✅ | migré | — | — |  |

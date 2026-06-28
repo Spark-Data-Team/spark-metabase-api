@@ -559,21 +559,107 @@ def test_drop_conversion_selects_preserves_named_and_literals():
     assert conv_lib.drop_conversion_selects(sql) == sql
 
 
-def test_drop_conversion_selects_noop_when_derived_reference_would_dangle():
-    # carte KPIs-evolution : un slot non mappé (conversions_2) alimente une colonne DÉRIVÉE
-    # (current_conversions_2, lookbehind '_' -> non détectée comme positionnelle) RÉFÉRENCÉE plus
-    # loin. Le drop simple par ligne casserait le SQL (réf pendante) -> NO-OP (sécurité, on garde
-    # la version substituée = comportement actuel ; pas de régression).
-    sql = ("SELECT\n"
-           "  SUM(conversions_2) AS current_conversions_2,\n"
-           "  SUM(clicks) AS clicks\n"
-           "FROM data),\n"
-           "evo AS (\n"
+def test_drop_conversion_selects_cascades_derived_passthrough():
+    # KPIs-evolution : conversions_2 (non mappé) alimente l'alias DÉRIVÉ current_conversions_2,
+    # passé tel quel dans un CTE aval. La CASCADE retire toute la chaîne (plus de no-op) -> SQL propre.
+    sql = ("WITH agg AS (\n"
            "  SELECT\n"
-           "    current_conversions_2,\n"
-           "    clicks\n"
-           "  FROM agg)")
-    assert conv_lib.drop_conversion_selects(sql) == sql
+           "    SUM(conversions_2) AS current_conversions_2,\n"
+           "    SUM(clicks) AS clicks\n"
+           "  FROM data\n"
+           ")\n"
+           "SELECT\n"
+           "  current_conversions_2,\n"
+           "  clicks\n"
+           "FROM agg")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "current_conversions_2" not in out
+    assert "clicks" in out
+
+
+def test_drop_conversion_selects_cascades_multiline_case():
+    # le slot non mappé alimente une colonne d'évolution définie par un CASE MULTI-LIGNES ->
+    # l'item CASE entier doit être retiré (sinon CASE orphelin = SQL cassé).
+    sql = ("WITH agg AS (\n"
+           "  SELECT\n"
+           "    SUM(conversions_2) AS current_conversions_2,\n"
+           "    SUM(clicks) AS clicks\n"
+           "  FROM data\n"
+           ")\n"
+           "SELECT\n"
+           "  clicks,\n"
+           "  CASE\n"
+           "    WHEN current_conversions_2 = 0 THEN 0\n"
+           "    ELSE current_conversions_2 / clicks\n"
+           "  END AS conversions_2_evolution\n"
+           "FROM agg")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "conversions_2_evolution" not in out and "current_conversions_2" not in out
+    assert "CASE" not in out  # pas de CASE orphelin
+    assert "clicks" in out
+
+
+def test_drop_conversion_selects_keeps_mapped_slot_cascade():
+    # purchases (slot mappé, déjà substitué) garde son dérivé ; seul le cascade du slot NON mappé part.
+    sql = ("WITH agg AS (\n"
+           "  SELECT\n"
+           "    SUM(purchases) AS current_purchases,\n"
+           "    SUM(conversions_2) AS current_conversions_2,\n"
+           "    SUM(clicks) AS clicks\n"
+           "  FROM data\n"
+           ")\n"
+           "SELECT\n"
+           "  current_purchases,\n"
+           "  CASE WHEN clicks=0 THEN 0 ELSE current_purchases/clicks END AS purchases_cr,\n"
+           "  CASE WHEN clicks=0 THEN 0 ELSE current_conversions_2/clicks END AS conversions_2_cr\n"
+           "FROM agg")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "current_purchases" in out and "purchases_cr" in out       # slot mappé + dérivé préservés
+    assert "current_conversions_2" not in out and "conversions_2_cr" not in out  # slot non mappé retiré
+    assert "clicks" in out
+
+
+def test_value_diffs_none_when_identical():
+    oc = ["DATE", "CONVERSIONS"]; nc = ["DATE", "PURCHASES"]
+    rows = [["w1", 10], ["w2", 20]]
+    assert conv_lib.value_diffs(oc, rows, nc, [["w1", 10], ["w2", 20]], {"CONVERSIONS": "PURCHASES"}) == []
+
+
+def test_value_diffs_flags_mismatched_column():
+    oc = ["DATE", "CONVERSIONS"]; nc = ["DATE", "PURCHASES"]
+    d = conv_lib.value_diffs(oc, [["w1", 10], ["w2", 20]], nc, [["w1", 10], ["w2", 18]],
+                             {"CONVERSIONS": "PURCHASES"})
+    assert len(d) == 1 and d[0][0] == "CONVERSIONS" and d[0][1] == "PURCHASES"
+    assert d[0][2] == 30 and d[0][3] == 28      # (old_sum, new_sum)
+
+
+def test_value_diffs_ignores_row_order():
+    # comparaison par SOMME -> insensible à l'ordre des lignes (pas de faux positif)
+    oc = ["D", "CONVERSIONS"]; nc = ["D", "PURCHASES"]
+    d = conv_lib.value_diffs(oc, [["a", 10], ["b", 20]], nc, [["b", 20], ["a", 10]],
+                             {"CONVERSIONS": "PURCHASES"})
+    assert d == []
+
+
+def test_value_diffs_tolerates_float_noise():
+    oc = ["D", "CONVERSIONS"]; nc = ["D", "PURCHASES"]
+    assert conv_lib.value_diffs(oc, [["a", 1.0000000001]], nc, [["a", 1.0]],
+                                {"CONVERSIONS": "PURCHASES"}) == []
+
+
+def test_value_diffs_flags_when_sum_changes_via_rows():
+    # moins de lignes -> somme nommée < positionnel -> écart détecté
+    oc = ["D", "CONVERSIONS"]; nc = ["D", "PURCHASES"]
+    d = conv_lib.value_diffs(oc, [["a", 1], ["b", 2]], nc, [["a", 1]], {"CONVERSIONS": "PURCHASES"})
+    assert len(d) == 1 and d[0][0] == "CONVERSIONS"
+
+
+def test_value_diffs_skips_missing_column():
+    oc = ["D", "CONVERSIONS"]; nc = ["D"]   # carte générée sans la colonne nommée -> non comparable
+    assert conv_lib.value_diffs(oc, [["a", 1]], nc, [["a"]], {"CONVERSIONS": "PURCHASES"}) == []
 
 
 TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
@@ -581,7 +667,12 @@ TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_drop_conversion_selects_noop_when_no_positional,
          test_drop_conversion_selects_keeps_named_columns_around_dropped,
          test_drop_conversion_selects_preserves_named_and_literals,
-         test_drop_conversion_selects_noop_when_derived_reference_would_dangle,
+         test_drop_conversion_selects_cascades_derived_passthrough,
+         test_drop_conversion_selects_cascades_multiline_case,
+         test_drop_conversion_selects_keeps_mapped_slot_cascade,
+         test_value_diffs_none_when_identical, test_value_diffs_flags_mismatched_column,
+         test_value_diffs_ignores_row_order, test_value_diffs_tolerates_float_noise,
+         test_value_diffs_flags_when_sum_changes_via_rows, test_value_diffs_skips_missing_column,
          test_native_and_tags_legacy_query_fallback, test_old_columns_detects_positional_not_custom,
          test_old_columns_base_not_matched_inside_positional, test_old_columns_ignores_conversion_type_filter,
          test_new_columns_named_and_custom, test_slot_old_columns, test_type_to_slot,

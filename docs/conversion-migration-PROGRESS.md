@@ -76,6 +76,28 @@ visible-100% 2 → 4** (+ **Zeplug 26493**, + **Violette GA4 26495**). Résidu r
 KPIs-evolution / 2-dim** (Shining 50104 ; TuneCore 5709/29059 ; Violette 50114/50110) = le follow-on. Plus aucun
 résidu « table simple ». **Les futurs lots passent en 1 passe** (brique b est dans `generate_card`).
 
+### Lot 4 — 2026-06-27 (6 clients, 21 dashboards — 1er lot AVEC brique b dès la 1re passe)
+| Client | Copies | visible-100% | Résidu |
+|---|---|---|---|
+| **Lutèce Cosmetics** | 26523 | **1/1** ✅ | — (slot 5 « OR » couvert par fallback) |
+| **France Toner** | 26524, 26532, 26533 | **2/3** ✅ | 26524 : KPIs-evo + (1-dim) |
+| **Pulse Protein** | 26525, 26529, 26536, 26539 | **1/4** | 26539 KPIs-evo ; 26525/26536 **swap écart-valeur → REVUE** ; 15402 fallback KO |
+| **My Blend** | 26526, 26531, 26537, 26543 | **1/4** | KPIs-evo (×3 dash) + stragglers 25/55 « by channel » (combos) |
+| **Sports d'époque** | 26527, 26530, 26534, 26538 | **2/4** ✅ | KPIs-evo (×2) ; #87 déployé+vérifié sur 26534 |
+| **Vestiaire Collective** | 26528,35,40,41,42 | **0/5** | **5/5 = KPIs-evo** ; ⛔ **EXCLU depuis (voir note)** |
+
+**Bilan lot 4 : 7/21 dashboards visible-100% en 1 passe** (brique b ✅). Merge OK (tracker 50→**71**, +42 cartes).
+🔑 **Le résidu est DÉSORMAIS dominé par les cartes KPIs-evolution** (current/previous/evolution) — confirmé sur
+TOUS les clients à perf-tables (Vestiaire 5/5, Sports, My Blend, France Toner, Pulse). C'est le **bottleneck #1
+restant**. Quelques autres : swaps bloqués sur écart-valeur (Pulse → revue, policy user), 2-dim/combos
+(My Blend 25/55), 1 fallback KO (15402). Bascule temporal-unit OK quasi partout.
+⚠️ process : le **Bash auto-backgroundé** les commandes longues (≠ choix subagent) → My Blend coupé à 3/4 dash,
+4e (22167→26543) complété en central ; détail au format 1-commande à fiabiliser pour les clients longs.
+
+> 🚫 **RÈGLE SPÉCIALE (user 2026-06-28)** : **Vestiaire Collective** & **Polène** = **EXCLUS du balayage**
+> (l'user les gère à la main). Les 5 copies Vestiaire du lot 4 + 8 cartes générées ont été **archivées** ;
+> worklist 100→**98**, tracker −5, shard Vestiaire sorti de `parallel/`. cf. memory `conv-migration-special-no-copy-clients`.
+
 ## Étape 3 — état strict (Iron Law)
 
 | Dashboard (copie) | Client | tuiles conv sur l'ancien | FINI (Iron Law) ? |

@@ -255,51 +255,171 @@ def apply_substitution(text, sub_map):
     return _unmask_literals(masked, parts)
 
 
-def _select_item_alias(line):
-    """Alias d'un item SELECT mono-ligne : l'identifiant après le dernier ` AS `, sinon une ligne
-    « colonne nue , » (passthrough de CTE). None si non parsable. Littéraux masqués."""
-    masked, _ = _mask_literals(line)
-    m = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)\s*,?\s*$", masked, re.IGNORECASE)
+def _select_item_alias(item_text):
+    """Alias d'un item SELECT : l'identifiant après le dernier ` AS ` (ex. `END AS conversions_2_evolution`),
+    sinon un item « colonne nue » (passthrough de CTE). None si non parsable. Tolère le multi-ligne."""
+    t = item_text.strip()
+    m = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", t, re.IGNORECASE)
     if m:
         return m.group(1)
-    m2 = re.match(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*,?\s*$", masked)
+    m2 = re.fullmatch(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*", t)
     return m2.group(1) if m2 else None
 
 
+def _mask_sql(text):
+    """Masque littéraux '...' ET commentaires de ligne `-- …` en placeholders \\x00M<n>\\x00 (1 passe,
+    littéral prioritaire pour ne pas couper un -- à l'intérieur d'un littéral). Réversible via _unmask_sql."""
+    parts = []
+    def repl(m):
+        parts.append(m.group(0))
+        return f"\x00M{len(parts) - 1}\x00"
+    return re.sub(r"'(?:[^']|'')*'|--[^\n]*", repl, text), parts
+
+
+def _unmask_sql(masked, parts):
+    return re.sub(r"\x00M(\d+)\x00", lambda m: parts[int(m.group(1))], masked)
+
+
+def _select_spans(masked):
+    """Spans (start,end) du CONTENU de chaque liste SELECT (entre `SELECT` et son `FROM` au MÊME
+    niveau de parenthèses). Gère CTE imbriquées et UNION (chaque SELECT a son FROM)."""
+    spans, depth, open_sel = [], 0, []
+    for m in re.finditer(r"\(|\)|\bSELECT\b|\bFROM\b", masked, re.IGNORECASE):
+        t = m.group(0).upper()
+        if t == "(":
+            depth += 1
+        elif t == ")":
+            depth -= 1
+        elif t == "SELECT":
+            open_sel.append((depth, m.end()))
+        elif t == "FROM" and open_sel and open_sel[-1][0] == depth:
+            _, start = open_sel.pop()
+            spans.append((start, m.start()))
+    return spans
+
+
+def _split_top_level(seg):
+    """Découpe un segment de liste SELECT en items, sur les virgules au niveau de parenthèses 0
+    (les virgules internes COALESCE(a,b) restent dans l'item). Renvoie des plages (a,b)."""
+    out, depth, last = [], 0, 0
+    for i, ch in enumerate(seg):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            out.append((last, i)); last = i + 1
+    out.append((last, len(seg)))
+    return out
+
+
+def _refs_any(text, names):
+    """True si `text` référence (mot entier, insensible à la casse) un des `names`."""
+    return any(re.search(rf"(?<![A-Za-z0-9_]){re.escape(n)}(?![A-Za-z0-9_])", text, re.IGNORECASE)
+               for n in names)
+
+
 def drop_conversion_selects(sql):
-    """Brique b — retire du SQL généré les ITEMS SELECT qui référencent encore une colonne de
-    conversion POSITIONNELLE (CONVERSIONS / CONVERSIONS_N / CONVERSION_N_VALUE / CONVERSION_VALUE),
-    y compris les dérivés mono-ligne (ex. `... AS cac_N` qui calculent `SUM(conversions_N)`).
-    Objectif : après `apply_substitution` (qui a renommé les slots MAPPÉS en colonnes nommées),
-    supprimer les slots NON mappés pour que la carte ne référence PLUS aucune colonne positionnelle
-    → satisfait l'Iron Law (« garder seulement les conversions réelles, retirer le positionnel
-    inutilisé »).
+    """Brique b — retire du SQL généré les ITEMS SELECT qui dépendent d'une colonne de conversion
+    POSITIONNELLE NON mappée (CONVERSIONS / CONVERSIONS_N / CONVERSION_N_VALUE / CONVERSION_VALUE).
+    Objectif : après `apply_substitution` (slots MAPPÉS → colonnes nommées), supprimer les slots NON
+    mappés pour que la carte ne référence PLUS aucune colonne positionnelle → Iron Law (« garder
+    seulement les conversions réelles »).
 
-    Approche par LIGNE (style des cartes Spark = un item SELECT par ligne) : on retire les lignes
-    dont `old_conversion_columns` est non vide (même détection ; littéraux & colonnes nommées
-    épargnés), puis on corrige la virgule pendante de l'item devenu dernier avant FROM/UNION.
+    Parseur SELECT-aware + CASCADE d'alias (fixpoint) : un item SELECT est retiré s'il référence un
+    nom « tué » ; son alias rejoint alors l'ensemble tué → on retire aussi les colonnes DÉRIVÉES
+    (`current_conversions_N`, `*_evolution`, `cac_N`, `cr_N`…) sur tous les CTE, y compris les items
+    CASE MULTI-LIGNES. Les slots MAPPÉS et leurs dérivés sont préservés (jamais dans l'ensemble tué).
 
-    SÉCURITÉ (self-safe, pur) : si une ligne RETIRÉE expose un alias DÉRIVÉ encore référencé par une
-    ligne GARDÉE (cartes « KPIs evolution » : `conversions_N` alimente `current_conversions_N` /
-    `*_evolution` sur plusieurs CTE, avec des CASE multi-lignes que ce découpage par ligne ne sait
-    pas suivre), le drop simple casserait le SQL → on renvoie le SQL INCHANGÉ (no-op = on garde la
-    version substituée, comportement actuel, zéro régression ; ces cartes restent un chantier à
-    part). No-op aussi si aucune colonne positionnelle. (Filet ultime en aval : render_ok archive
-    tout SQL cassé.)"""
-    if not sql or not old_conversion_columns(sql):
+    Self-safe (pur, zéro régression) — renvoie le SQL INCHANGÉ si : aucune colonne positionnelle ;
+    pas de liste SELECT détectée ; une liste serait entièrement vidée ; il reste une colonne
+    positionnelle après coup ; ou une référence pendante vers un alias supprimé subsiste. (Filet
+    ultime en aval : render_ok archive tout SQL cassé.)"""
+    if not sql:
         return sql
-    lines = sql.splitlines()
-    drop_i = {i for i, ln in enumerate(lines) if old_conversion_columns(ln)}
-    if not drop_i:
+    seed = {c.lower() for c in old_conversion_columns(sql)}
+    if not seed:
         return sql
-    dropped_aliases = {a.lower() for a in (_select_item_alias(lines[i]) for i in drop_i) if a}
-    kept_sql = "\n".join(ln for i, ln in enumerate(lines) if i not in drop_i)
-    masked_kept, _ = _mask_literals(kept_sql)
-    for al in dropped_aliases:
-        if re.search(rf"(?<![A-Za-z0-9_]){re.escape(al)}(?![A-Za-z0-9_])", masked_kept, re.IGNORECASE):
-            return sql  # référence pendante -> drop non sûr -> no-op
-    # item SELECT devenu dernier -> retirer sa virgule traînante avant FROM / UNION
-    return re.sub(r",(\s*(?:--[^\n]*\n\s*)*)(FROM\b|UNION\b)", r"\1\2", kept_sql, flags=re.IGNORECASE)
+    masked, parts = _mask_sql(sql)
+    spans = _select_spans(masked)
+    if not spans:
+        return sql
+    span_items, all_items = [], []
+    for si, (s, e) in enumerate(spans):
+        seg = masked[s:e]
+        items = []
+        for a, b in _split_top_level(seg):
+            text = seg[a:b]
+            if not text.strip():
+                continue
+            al = _select_item_alias(text)
+            items.append({"text": text, "alias": al.lower() if al else None, "drop": False})
+        span_items.append(items); all_items.extend(items)
+
+    kill, changed = set(seed), True
+    while changed:
+        changed = False
+        for it in all_items:
+            if not it["drop"] and _refs_any(it["text"], kill):
+                it["drop"] = True
+                if it["alias"]:
+                    kill.add(it["alias"])
+                changed = True
+
+    out = masked
+    for si in range(len(spans) - 1, -1, -1):      # de la fin au début : indices stables
+        items = span_items[si]
+        kept = [it["text"] for it in items if not it["drop"]]
+        if len(kept) == len(items):
+            continue
+        if not kept:
+            return sql                            # liste SELECT vidée -> SQL invalide -> no-op
+        s, e = spans[si]
+        seg = masked[s:e]
+        lead = seg[:len(seg) - len(seg.lstrip())]
+        trail = seg[len(seg.rstrip()):]
+        body = ("," + lead).join(t.strip() for t in kept)
+        out = out[:s] + lead + body + trail + out[e:]
+
+    result = _unmask_sql(out, parts)
+    if old_conversion_columns(result):            # positionnelle subsistante (hors liste SELECT) -> no-op
+        return sql
+    dropped_aliases = {it["alias"] for it in all_items if it["drop"] and it["alias"]}
+    masked_result, _ = _mask_sql(result)
+    if _refs_any(masked_result, dropped_aliases):  # référence pendante -> drop non sûr -> no-op
+        return sql
+    return result
+
+
+def _close(a, b, tol=1e-6):
+    if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+        return a == b
+    return a == b or abs(a - b) <= tol * max(abs(a), abs(b), 1e-12)
+
+
+def value_diffs(old_cols, old_rows, new_cols, new_rows, sub_map, tol=1e-6):
+    """Garde-fou VALEUR de generate_fallback (= policy user « écart de valeur → revue »). Pour chaque
+    slot mappé (sub_map OLD→NEW), compare la SOMME de la colonne entre la carte ORIGINALE (colonne
+    positionnelle) et la carte GÉNÉRÉE (colonne nommée) — comparaison **indépendante de l'ordre des
+    lignes** (robuste aux cartes sans ORDER BY). Renvoie [(old_col, new_col, old_sum, new_sum)] pour
+    les colonnes dont la somme diffère (> tolérance). Vide = fidèle. Pur. Une colonne absente d'un des
+    deux jeux est ignorée (non comparable, pas un écart). Choix SOMME (vs cellule) : le risque réel est
+    un nommé qui compte AUTREMENT que le positionnel (écart systématique, ex. Toploc/TuneCore) — la
+    somme le capte sans faux positif d'ordre."""
+    def colsum(cols, rows, name):
+        idx = {str(c).upper(): i for i, c in enumerate(cols)}
+        i = idx.get(name.upper())
+        if i is None:
+            return None
+        return sum(r[i] for r in rows if isinstance(r[i], (int, float)))
+    diffs = []
+    for oc, nc in sub_map.items():
+        os_, ns_ = colsum(old_cols, old_rows, oc), colsum(new_cols, new_rows, nc)
+        if os_ is None or ns_ is None:
+            continue
+        if not _close(os_, ns_, tol):
+            diffs.append((oc, nc, os_, ns_))
+    return diffs
 
 
 def repoint_visualizer_source(viz_settings, old_cid, new_cid):

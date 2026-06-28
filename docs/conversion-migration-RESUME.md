@@ -50,11 +50,22 @@ user en **français, simple et visuel** ; pas de commit sans demande.
   régression. Lot 3 : dashboards visible-100% **2 → 4** (+Zeplug, +Violette GA4) ; résidu restant = **5 tuiles,
   uniquement KPIs-evolution / 2-dim** = le **follow-on** (parseur cascade OU carte générique « par X — KPIs
   evolution »). Détails : ANOMALIES « BRIQUE B » + PROGRESS lot 3.
-- **À FAIRE ENSUITE** : prendre le **prochain lot (4-6 clients NON faits)** dans `migration/worklist.json`
-  (déjà faits : lots 1-3 = AMV, Exaprint, Be Radiance, Ecopia, Komilfo, Osée, Toploc, Solarock, CapCar,
-  Dedikazio, Dermalogica, Shining, TuneCore, Zeplug, Violette_FR), dérouler via la recette PARALLEL, valider
-  lot par lot. ⚠️ harnais subagent : **interdire le background** (3 récidives). Toploc slot 1 (Leads 36→23) =
-  arbitrage data/consultant. Follow-on KPIs-evolution = décision user pour prioriser.
+- **Lot 4 (2026-06-27/28)** : Lutèce Cosmetics, France Toner, Pulse Protein, My Blend, Sports d'époque
+  (Vestiaire = exclu, voir ci-dessous). **7/21 dashboards visible-100% en 1 passe** (brique b active). Résidu
+  dominant = **KPIs-evolution** (prévalence confirmée).
+- **🧩 BRIQUE B CASCADE + 🛡️ GARDE-FOU VALEUR codés (2026-06-28, suite 217)** — détails ANOMALIES « 2026-06-28 » :
+  · `conv_lib.drop_conversion_selects` = parseur SELECT-aware + cascade d'alias (gère KPIs-evolution multi-CTE /
+    CASE multi-lignes / multi-dim). Self-safe (no-op si réf pendante). Vérifié : My Blend 5940 KPIs-evo → clean.
+  · `generate_fallback.value_review` + `conv_lib.value_diffs` = **garde-fou valeur** (policy user) : écart
+    nommé≠positionnel → carte gardée sur l'ancien + « ⚠️ À REVOIR ». Vérifié : TuneCore bloqué, My Blend/Violette migrés.
+- **🚫 EXCLUS du balayage (user 2026-06-28)** : **Vestiaire Collective** + **Polène** (worklist 100→98 ;
+  copies Vestiaire lot 4 archivées). memory `conv-migration-special-no-copy-clients`.
+- **À FAIRE ENSUITE** : prochain lot (4-6 clients NON faits) dans `migration/worklist.json` (déjà faits :
+  AMV, Exaprint, Be Radiance, Ecopia, Komilfo, Osée, Toploc, Solarock, CapCar, Dedikazio, Dermalogica, Shining,
+  TuneCore, Zeplug, Lutèce, France Toner, Pulse Protein, My Blend, Sports d'époque). Recette PARALLEL, valider
+  lot par lot. ⚠️ le **Bash auto-backgroundé** les runs longs → pour ≥5 dash, découper ou reprendre en central
+  le dashboard manquant. Toploc/TuneCore (slot nommé≠positionnel) = arbitrage data. **Re-appliquer cascade +
+  garde-fou aux lots 1-4 déjà faits** = optionnel (les nouveaux lots en profitent en 1 passe).
 
 ## 2. État au 2026-06-24 (avant le harnais — historique)
 - **1 client complet** (Iron Law) : 100% Print. **2 dashboards true-100%** : copies 26127 (100% Print), 26197 (Cica Home).
