@@ -369,6 +369,19 @@
   175 fidèles**. Seul vrai écart = **Lutèce** `%ATC/vue_product` (CONVERSIONS→PURCHASES 16,6 vs 5,3) → ajouté.
 - → la crainte « lots 3-4 sans garde-fou » est **levée** : migration fidèle (sauf Lutèce + TuneCore déjà connu).
 
+### 🚨 AUDIT WORKLIST GLOBAL (2026-06-29) — 74/500 dashboards mal attribués (15%)
+- Cause : la worklist (issue de `discover_conversion_targets`) **mal-attribuait massivement**. Audit parent-aware
+  (collection client = niveau direct sous /317/) : **426 OK, 74 MISMATCH**. Pire cas : **Le Slip Français =
+  fourre-tout** (34 dash → **11** vrais ; 23 appartenaient à 18 autres clients). Aussi Morning 7, WTTJ 6, 24S 5…
+- **Worklist corrigée** (`migration/worklist.json` ; backup `worklist.PRE-AUDIT.json` ; rapport
+  `worklist-audit.json`) : 74 dashboards déplacés vers leur vrai client ; **13 clients « cachés » créés** (Belveo 9,
+  Gestion immo Walter 4, Ray Studios 3, Funkie, Nora Beauty, Opla, Bambinos, Séfia, Tradis, Sami.eco, Felicity,
+  Les Tricots Marcel, Canopea Paris) ; **4 faux clients retirés** (Free, Little Worker, Sharelock, Upway —
+  100% mal attribués). **100 → 109 clients**, 500 dash re-répartis.
+- ⚠️ **Conséquence** : des clients déjà « faits » ont gagné des dashboards cachés (Komilfo +3, Inoui +3, Pulse +3,
+  Toploc +2…) → **passe de rattrapage** à prévoir sur ceux-là. Mais la worklist est désormais **fiable** → les
+  lots suivants sont propres d'office (le pré-check par lot ne devrait quasi plus rien trouver).
+
 ### 🔎 LIMITE DE PRÉCISION du garde-fou (faux positif possible)
 - Le garde-fou compare les colonnes RENOMMÉES (sub_map) **+ COMMUNES** (nom préservé, nécessaire pour les
   KPIs-evolution `current_conversions`…). Effet de bord : une colonne **non-conversion non déterministe** (ex.
