@@ -382,6 +382,21 @@
   Toploc +2…) → **passe de rattrapage** à prévoir sur ceux-là. Mais la worklist est désormais **fiable** → les
   lots suivants sont propres d'office (le pré-check par lot ne devrait quasi plus rien trouver).
 
+### 🐛 « bug SIGN_UPS » investigué (2026-06-29) = en fait 2 bugs distincts + 1 fix
+- **Bug A — collision de nom (Vestiaire 28157)** : la carte utilise DÉJÀ une colonne `sign_ups` (source
+  adjust/app : `SUM(conversions_1) + SUM(sign_ups) AS registers`). Mapper slot 1→`sign_ups` crée
+  `c.sign_ups + a.sign_ups` non qualifié → **`ambiguous column name 'SIGN_UPS'`**. Fix = qualification SQL-aware
+  (risqué). **NON corrigé** : Vestiaire est exclu, hors périmètre.
+- **Bug B — cascade UNION (Funkie 6205)** : carte KPIs-evolution à 4 CTE + 3 branches UNION. La cascade retire
+  1 colonne de plus de `join_current_previous_data` (branche `SELECT *`) que de la branche explicite →
+  **`invalid number of result columns ... expected 64, got 65`**. Propagation d'alias incohérente entre spans.
+  **Hard-tail accepté** (sûr : render_ok archive, 0 fausse donnée ; la carte utilise 7 slots, Funkie en a 2 →
+  vraie solution = carte générique dédiée). + bloqué de toute façon car la carte garde des slots non mappés.
+- ✅ **FIX RÉEL livré — `_mask_sql` masque désormais les commentaires de BLOC `/* … */`** (avant : seulement
+  `--` et littéraux). Un `FROM`/virgule/parenthèse DANS un `/* */` bornait le span trop tôt → le positionnel
+  n'était pas retiré. 1 test TDD (suite 220→**221**), zéro régression (TuneCore/My Blend/Violette re-vérifiés
+  OK). Bénéficie à toute carte à commentaire bloc, pas que Funkie.
+
 ### 🔎 LIMITE DE PRÉCISION du garde-fou (faux positif possible)
 - Le garde-fou compare les colonnes RENOMMÉES (sub_map) **+ COMMUNES** (nom préservé, nécessaire pour les
   KPIs-evolution `current_conversions`…). Effet de bord : une colonne **non-conversion non déterministe** (ex.

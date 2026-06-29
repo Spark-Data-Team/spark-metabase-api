@@ -267,13 +267,15 @@ def _select_item_alias(item_text):
 
 
 def _mask_sql(text):
-    """Masque littéraux '...' ET commentaires de ligne `-- …` en placeholders \\x00M<n>\\x00 (1 passe,
-    littéral prioritaire pour ne pas couper un -- à l'intérieur d'un littéral). Réversible via _unmask_sql."""
+    """Masque littéraux '...', commentaires de BLOC `/* … */` ET de ligne `-- …` en placeholders
+    \\x00M<n>\\x00 (1 passe ; littéral prioritaire pour ne pas couper un -- ou /* à l'intérieur d'un
+    littéral). Sans ça, un `FROM`/virgule/parenthèse DANS un commentaire fausse le découpage des spans
+    et des items (span borné trop tôt → positionnel non retiré). Réversible via _unmask_sql."""
     parts = []
     def repl(m):
         parts.append(m.group(0))
         return f"\x00M{len(parts) - 1}\x00"
-    return re.sub(r"'(?:[^']|'')*'|--[^\n]*", repl, text), parts
+    return re.sub(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", repl, text, flags=re.S), parts
 
 
 def _unmask_sql(masked, parts):

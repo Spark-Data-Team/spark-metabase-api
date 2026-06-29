@@ -622,6 +622,19 @@ def test_drop_conversion_selects_keeps_mapped_slot_cascade():
     assert "clicks" in out
 
 
+def test_drop_conversion_selects_ignores_block_comments():
+    # un commentaire /* … */ contenant FROM (et parenthèse déséquilibrée) ne doit PAS casser le
+    # découpage spans/items : sinon le span est borné trop tôt et le positionnel n'est pas retiré.
+    sql = ("SELECT\n"
+           "  /* note: ancienne logique FROM legacy, COALESCE( ... */\n"
+           "  SUM(conversions_2) AS conversions_2,\n"
+           "  SUM(clicks) AS clicks\n"
+           "FROM data")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()   # conversions_2 bien retiré
+    assert "clicks" in out and "FROM data" in out          # colonne saine + vrai FROM intacts
+
+
 def test_value_diffs_none_when_identical():
     oc = ["DATE", "CONVERSIONS"]; nc = ["DATE", "PURCHASES"]
     rows = [["w1", 10], ["w2", 20]]
@@ -687,6 +700,7 @@ TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_drop_conversion_selects_cascades_derived_passthrough,
          test_drop_conversion_selects_cascades_multiline_case,
          test_drop_conversion_selects_keeps_mapped_slot_cascade,
+         test_drop_conversion_selects_ignores_block_comments,
          test_value_diffs_none_when_identical, test_value_diffs_flags_mismatched_column,
          test_value_diffs_ignores_row_order, test_value_diffs_tolerates_float_noise,
          test_value_diffs_flags_when_sum_changes_via_rows, test_value_diffs_skips_missing_column,
