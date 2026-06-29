@@ -121,6 +121,13 @@ ANOMALIES « lot 5 ») : worklist mal attribuée (Figaret→Absolut Cashmere/Can
 - Garde-fou valeur : 4 tuiles → À REVOIR. Merge tracker 83→**99**.
 - ⚠️ **Dashboard Questions = 2e occurrence** (Figaret 15336, Yooji 14313) → copie shallow refusée, à traiter.
 
+### Lot 8 — 2026-06-29 (4 clients 0-flou ; meilleur lot)
+- **20/25 visible-100% (80%)**, **0 À REVOIR, 0 copie KO, 0 DQ**. Inoui Editions **8/8**, Virgil 6/8,
+  Superdiet 4/6, Inter Invest 2/3. Merge tracker 124→**149** (+72 cartes).
+- Démontre : **client bien mappé (0 slot flou) + valeurs fidèles → ~80% visible-100% en 1 passe**.
+- Pré-check parent-aware **rentabilisé fort** : **Inter Invest 5/8 dashboards étrangers** écartés (Exaprint,
+  Quiz Room, Totemia, France Toner, Zeplug) + Superdiet 1 (Zenchef) → réassignés au bon client.
+
 ## Étape 3 — état strict (Iron Law)
 
 | Dashboard (copie) | Client | tuiles conv sur l'ancien | FINI (Iron Law) ? |

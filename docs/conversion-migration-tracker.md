@@ -1,8 +1,8 @@
 # Migration conversions — SUIVI (généré, ne pas éditer à la main)
 
 > Source : `migration/conv-migration-tracker.json` · régénérer : `conv_tracker.py --render`.
-> Ancre de campagne : `[conv-2026-06]`. **124 dashboards** · 121 taggés · 0 anciens archivés.
-> Clients : Pro Nutrition (4), Goodiespub (4), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4), Arrago (2), HomeExchange (4), Merci Walter (2), Walter (2), Yooji (4), Zenchef (3), Comptastar (7), Fauré Le Page (7), Gamin Tout Terrain (1), Redesk (1), Richardson (1), Steel Shed Solutions (6), Figaret (1).
+> Ancre de campagne : `[conv-2026-06]`. **149 dashboards** · 146 taggés · 0 anciens archivés.
+> Clients : Pro Nutrition (4), Goodiespub (4), Father & Sons (4), Shopinvest (7), Rivadouce (4), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4), Arrago (2), HomeExchange (4), Merci Walter (2), Walter (2), Yooji (4), Zenchef (3), Comptastar (7), Fauré Le Page (7), Gamin Tout Terrain (1), Redesk (1), Richardson (1), Steel Shed Solutions (6), Figaret (1), Inoui Editions (8), Inter Invest (3), Superdiet (6), Virgil (8).
 
 Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:true` (opt-in pour archiver l'ancien) · `old_archived` (ancien archivé). L'archivage des anciens est piloté par `archive_superseded.py` et ne touche QUE les lignes `archive_old:true`.
 
@@ -132,3 +132,28 @@ Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:tr
 | Fauré Le Page | Consideration \| Fauré le Page | 26745 | 13852 | ✅ | migré | — | — |  |
 | Figaret | Global \| Figaret | 26743 | 15336 | ✅ | migré | — | — |  |
 | Yooji | Global - Yooji Blended | 26744 | 14313 | ✅ | migré | — | — |  |
+| Inoui Editions | Global \| Inoui Editions | 26754 | 329 | ✅ | migré | — | — |  |
+| Inoui Editions | Global 2025 \| Inoui Editions | 26787 | 14445 | ✅ | migré | — | — |  |
+| Inoui Editions | Inoui \| GA4 Audiences | 26788 | 15601 | ✅ | migré | — | — |  |
+| Inoui Editions | Inoui Editions \| Global PoP | 26789 | 15865 | ✅ | migré | — | — |  |
+| Inoui Editions | Inoui \| Noto | 26790 | 15930 | ✅ | migré | — | — |  |
+| Inoui Editions | SEA Global Overview (Google & Microsoft) Template - Inoui | 26791 | 20288 | ✅ | migré | — | — |  |
+| Inoui Editions | Multi-Country Performance  - Inoui | 26792 | 23124 | ✅ | migré | — | — |  |
+| Inoui Editions | E-commerce Campaign Performance Template - Inoui | 26793 | 24609 | ✅ | migré | — | — |  |
+| Inter Invest | Global \| Inter Invest | 26808 | 15 | ✅ | migré | — | — |  |
+| Inter Invest | Inter Invest \| SEA | 26809 | 4080 | ✅ | migré | — | — |  |
+| Inter Invest | Inter Invest \| Focus PER | 26810 | 5173 | ✅ | migré | — | — |  |
+| Superdiet | Perf by channel  SD | 26802 | 12928 | ✅ | migré | — | — |  |
+| Superdiet | Leviers \| Superdiet | 26803 | 13125 | ✅ | migré | — | — |  |
+| Superdiet | Google Analytics 4 - Global template  - Duplicate | 26804 | 18768 | ✅ | migré | — | — |  |
+| Superdiet | Google Ads - Performance Max Template \| E-commerce | 26805 | 21375 | ✅ | migré | — | — |  |
+| Superdiet | Google Ads - Performance Max Template \| E-commerce  \| NEW \| Superdiet  | 26806 | 23256 | ✅ | migré | — | — |  |
+| Superdiet | Performances \| Overview \| ATC \| Superdiet | 26807 | 24312 | ✅ | migré | — | — |  |
+| Virgil | Virgil - Pilotage | 26794 | 10585 | ✅ | migré | — | — |  |
+| Virgil | Virgil - Home | 26795 | 11783 | ✅ | migré | — | — |  |
+| Virgil | Virgil - Spoune | 26796 | 11951 | ✅ | migré | — | — |  |
+| Virgil | Template SEO \| Overview - Pages - Keywords - Virgil | 26797 | 15175 | ✅ | migré | — | — |  |
+| Virgil | Virgil - Search | 26798 | 19231 | ✅ | migré | — | — |  |
+| Virgil | Reporting SEO \| Virgil | 26799 | 19560 | ✅ | migré | — | — |  |
+| Virgil | Suivi des conversions \| Virgil | 26800 | 19626 | ✅ | migré | — | — |  |
+| Virgil | Reporting SEO - ROI \| Virgil | 26801 | 19758 | ✅ | migré | — | — |  |
