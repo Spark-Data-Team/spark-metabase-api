@@ -352,3 +352,27 @@
    Cashmere 18406, LocaBoat 19792, Lunii (8274/20848), Canopea 18438, + les 3 déjà faits. **Les futurs lots les
    gèrent en 1 passe** (deep copy auto). ⚠️ la deep copy DUPLIQUE toutes les cartes du dashboard dans 14016
    (staging) — OK pour la validation ; à l'étape PROD, ces dashboards seront édités EN PLACE (pas de copie).
+
+---
+
+## 2026-06-28/29 · Handoff team lead rafraîchi + re-check valeur lots 3-4
+
+### 📋 Handoff = 2 volets
+- **`CONVERSIONS-A-TRANCHER.csv`** (slots ambigus, 273 lignes) : export Airtable frais du 28/06 fourni par
+  l'user → **identique au cache du 25/06** (0 client gagné/perdu, 301 UNMAPPED / 32 CONFLICT). **Mapping cache
+  confirmé à jour, aucune dérive.** Backups `*.PRE-0628.*`.
+- **`CONVERSIONS-A-REVOIR-valeur.csv`** (NOUVEAU, 21 lignes / 8 clients) : écarts nommé≠positionnel détectés par
+  le garde-fou (Comptastar 10, BYmyCAR 3, Yooji 2, HomeExchange 2, Distingo 1, TuneCore 1, Toploc 1, Lutèce 1).
+
+### ✅ Re-check valeur lots 3-4 (migrés AVANT le garde-fou) — quasi parfaits
+- Rejoué le garde-fou sur les originaux (positionnel vs nommé, `/api/dataset`, sans mutation) : **178 cartes →
+  175 fidèles**. Seul vrai écart = **Lutèce** `%ATC/vue_product` (CONVERSIONS→PURCHASES 16,6 vs 5,3) → ajouté.
+- → la crainte « lots 3-4 sans garde-fou » est **levée** : migration fidèle (sauf Lutèce + TuneCore déjà connu).
+
+### 🔎 LIMITE DE PRÉCISION du garde-fou (faux positif possible)
+- Le garde-fou compare les colonnes RENOMMÉES (sub_map) **+ COMMUNES** (nom préservé, nécessaire pour les
+  KPIs-evolution `current_conversions`…). Effet de bord : une colonne **non-conversion non déterministe** (ex.
+  **rang SEO** `RANK_GROUP`/`RANK_ABSOLUTE` de France Toner « SEO/SEA synergy by keyword ») peut différer
+  run-to-run et être **sur-flaguée** → carte gardée sur l'ancien à tort. **Conservateur** (jamais de fausse
+  donnée poussée) mais imprécis. **Affinage candidat** (non fait) : restreindre la compare des colonnes communes
+  à celles liées aux conversions. 2 faux positifs RANK exclus du handoff.
