@@ -42,16 +42,20 @@ def card_values(mb, card_id, client, window):
     rows = (r or {}).get("data", {}).get("rows", []) or []
     return sorted(round(float(x), 4) for row in rows for x in row if isinstance(x, (int, float)))
 
-def generate_card(mb, old_card, sub_map, coll_id, cmap=None):
+def generate_card(mb, old_card, sub_map, coll_id, cmap=None, drop_unmapped=True):
     dq = json.loads(json.dumps(old_card["dataset_query"]))
     # substitue les slots MAPPÉS (positionnel -> nommé) PUIS retire les slots NON mappés restants
-    # (brique b) -> la carte ne référence plus AUCUNE colonne positionnelle (Iron Law).
+    # (brique b/cascade) -> la carte ne référence plus AUCUNE colonne positionnelle (Iron Law).
+    # drop_unmapped=False : on saute la cascade (auto-sûreté quand elle casserait une carte très
+    # complexe ; on garde alors la version substituée-seule qui REND, avec slots non mappés en rab).
+    def _sub(native):
+        out = conv_lib.apply_substitution(native, sub_map)
+        return conv_lib.drop_conversion_selects(out) if drop_unmapped else out
     for st in dq.get("stages", []) or []:
         if st.get("lib/type") == "mbql.stage/native":
-            st["native"] = conv_lib.drop_conversion_selects(conv_lib.apply_substitution(st["native"], sub_map))
+            st["native"] = _sub(st["native"])
     if dq.get("type") == "native":
-        dq["native"]["query"] = conv_lib.drop_conversion_selects(
-            conv_lib.apply_substitution(dq["native"]["query"], sub_map))
+        dq["native"]["query"] = _sub(dq["native"]["query"])
     viz = conv_lib.substitute_viz(old_card.get("visualization_settings") or {}, sub_map)  # préserve les libellés humains
     # titre générique (« Conversions ») -> conversion nommée (« Purchases ») ; libellé métier préservé
     if cmap and viz.get("card.title"):

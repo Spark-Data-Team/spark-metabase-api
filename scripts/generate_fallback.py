@@ -159,9 +159,17 @@ def main():
         if not gen_id and args.yes:
             gen_id = generate_card(mb, card, sub_map, GEN_COLL, cmap)
             if gen_id and not render_ok(mb, gen_id, args.client):
+                # AUTO-SÛRETÉ : la cascade a cassé le SQL (carte très complexe). Plutôt que de laisser
+                # une carte KO (= bug outil), on régénère SANS cascade (substitué-seul, qui REND) : les
+                # slots non mappés restent en rab → la tuile reste « sur l'ancien » (trou de COUVERTURE,
+                # pas un bug ; à finir via carte générique dédiée), mais NOTRE outil ne casse rien.
                 mb.put(f"/api/card/{gen_id}", "raw", json={"archived": True})
-                report.append((cid, card.get("name"), f"⛔ généré {gen_id} mais rendu KO → archivé"))
-                new_dcs.append(dc); continue
+                gen_id = generate_card(mb, card, sub_map, GEN_COLL, cmap, drop_unmapped=False)
+                if gen_id and not render_ok(mb, gen_id, args.client):
+                    mb.put(f"/api/card/{gen_id}", "raw", json={"archived": True})
+                    report.append((cid, card.get("name"), f"⛔ généré {gen_id} mais rendu KO → archivé (même sans cascade)"))
+                    new_dcs.append(dc); continue
+                report.append((cid, card.get("name"), "⚠️ cascade KO → substitué SANS drop (slots non mappés en rab — couverture, pas un bug)"))
             if gen_id:
                 # GARDE-FOU VALEUR (policy user) : nommé vs positionnel par slot mappé. Écart -> on NE
                 # migre PAS (carte archivée, tuile gardée sur l'ancien) et on flague pour REVUE.
