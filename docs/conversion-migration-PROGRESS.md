@@ -3,7 +3,35 @@
 > **Iron Law (user)** : un dashboard n'est « FINI » que si **0 tuile contenant des conversions ne reste sur
 > l'ancien système** (sinon, retirer les colonnes positionnelles cassera ces tuiles). « Client complet » =
 > TOUS ses dashboards finis.
->
+
+---
+
+## 🏁 ÉTAT FINAL DU BALAYAGE (2026-06-30)
+
+**Tout le périmètre migratable a été traité** (lots 1-10 + streams parallèles). Accounting (`scripts/final_accounting.py`
+→ `migration/accounting-final.json`) :
+
+```
+73 clients · 370 dashboards copiés (collection 14016, rangés en sous-collections par client via reorg_14016.py)
+visible-100% : 173 (47%)          résidu : 197 (53%)
+Originaux INTOUCHÉS · cartes générées en 14115/13988 · garde-fou valeur + DQ deep-copy + cascade self-safe actifs
+```
+
+**Le résidu est catégorisé (clé pour la suite) :**
+| Catégorie | Volume | Qui débloque | Livrable |
+|---|---|---|---|
+| 👤 **Décision CONSULTANT** (slot ambigu Airtable utilisé) | **80 slots / 33 clients** | consultants | `HANDOFF-consultants.csv` (100 questions mâchées, filtrées) + round-trip `parse_consultant_answers.py` |
+| 🔧 **COUVERTURE (dette NOUS)** | ~178 slots vides de tables larges + KPIs-evo/benchmark | nous | cascade plus robuste / **carte générique dédiée** (futur) — `coverage-cards.json` |
+| 🧪 **DATA-équipe** (nommé≠positionnel) | 21 lignes | équipe data | `CONVERSIONS-A-REVOIR-valeur.csv` |
+
+**Exclus du périmètre** : 21 clients **inactifs** (Airtable `currently_active_projects_count=0`), Vestiaire/Polène/Ray
+Studios (règle user), 11 clients **tout-Gaby** (0 slot mappé). cf. memories `conv-migration-active-clients-filter`,
+`conv-migration-special-no-copy-clients`.
+
+**Round-trip consultant** : `build_consultant_handoff.py --blockers residual-blockers-REAL.json` → le consultant
+coche/écrit la colonne RÉPONSE → `parse_consultant_answers.py` → `consultant-decisions.json` → fusion mapping +
+re-run des dashboards de ces clients = débloqués.
+
 > **Périmètre réel** : ~**98 clients ACTIFS** (≥1 `new_type` réel dans Airtable). ⚠️ le préflight (97) est
 > PÉRIMÉ : **25 clients actifs en sont absents** → RE-SCANNER la collection 317 en live pour le vrai total.
 

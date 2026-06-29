@@ -2,6 +2,24 @@
 
 > Point d'entrée pour un **agent frais** qui reprend le chantier. Lis ce fichier EN ENTIER d'abord.
 
+## 🏁 ÉTAT FINAL 2026-06-30 (lire en PREMIER — le gros est fait)
+**Tout le périmètre migratable a été balayé** (lots 1-10 + streams). Sur COPIES (collection 14016, rangées en
+sous-collections par client). **370 dashboards / 73 clients · 173 visible-100% (47%) · 197 résidu.** Détail +
+catégorisation = `docs/conversion-migration-PROGRESS.md` § ÉTAT FINAL + `migration/accounting-final.json`.
+
+**Outillage MÛR** (suite 221) : brique b + **cascade self-safe** (jamais de carte KO ; fallback substitué-seul),
+**garde-fou valeur** (nommé≠positionnel → À REVOIR), **DQ → deep copy auto**, **pré-check attribution** (worklist
+auditée : 74 dashboards mal attribués corrigés), **filtre clients actifs** (Airtable `apprhVP5LBAQ8jjsK`/
+`tblbn4hWORfpQ8DiQ`, count>0).
+
+**CE QUI RESTE = 3 paniers nets** (plus de bug outil) :
+- 👤 **80 décisions consultant / 33 clients** → `migration/HANDOFF-consultants.csv` (mâché) ⇄ `parse_consultant_answers.py`.
+- 🔧 **Couverture NOUS** (tables larges complexes / KPIs-evo / benchmark) → cascade plus robuste ou **carte
+  générique dédiée** (`migration/coverage-cards.json`).
+- 🧪 **Data-équipe** (écart valeur) → `migration/CONVERSIONS-A-REVOIR-valeur.csv`.
+
+**Étape PROD** (après réponses consultant + validation) = appliquer sur les ORIGINAUX ; partage Nanga MANUEL (GM).
+
 ## 0. À lire (dans l'ordre)
 1. **Ce fichier.**
 2. `docs/conversion-migration-PROGRESS.md` — où on en est, par client + lots parallèles (Iron Law).
