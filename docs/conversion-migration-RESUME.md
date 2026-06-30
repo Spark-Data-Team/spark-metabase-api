@@ -18,7 +18,15 @@ auditée : 74 dashboards mal attribués corrigés), **filtre clients actifs** (A
   générique dédiée** (`migration/coverage-cards.json`).
 - 🧪 **Data-équipe** (écart valeur) → `migration/CONVERSIONS-A-REVOIR-valeur.csv`.
 
-**Étape PROD** (après réponses consultant + validation) = appliquer sur les ORIGINAUX ; partage Nanga MANUEL (GM).
+**MODÈLE PROD (corrigé user 2026-06-30)** : les **copies de 14016 SONT la prod-à-venir** — on ne refait RIEN sur
+les originaux. Une fois **100% propre** (toutes les cartes migrées + 0 erreur), on **déplace les copies dans les
+collections clients** → elles deviennent la prod. ⚠️ **DÉCISION OUVERTE Nanga** : déplacer = NOUVEAUX ids de
+dashboard → les liens/partages Nanga (qui pointent sur les anciens originaux) sont à **re-partager (GM, manuel)** ;
+alternative = écraser le contenu des originaux pour garder les ids (mais = « refaire », écarté par l'user). À trancher.
+**Handoff conversions → Lucas (team lead)** qui centralise tous ces besoins (pas d'envoi direct aux consultants).
+⚠️ **Clutter deep-copy** : les dashboards à Dashboard Questions ont été deep-copiés → ~308 cartes dupliquées
+rangées dans la sous-collection technique 14016/14280 ; elles font partie de la prod-à-venir (référencées par
+leurs dashboards) → à déplacer AVEC eux le moment venu (ou repenser le traitement DQ pour éviter les doublons).
 
 ## 0. À lire (dans l'ordre)
 1. **Ce fichier.**
