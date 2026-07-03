@@ -23,12 +23,15 @@ import conv_lib
 SANDBOX = 14115  # collection accessible sous 11673 (PAS le sandbox 13885/13851 — sinon tuiles vides conso)
 CTE = (REPO / "scripts" / "granularity_cte.sql").read_text()
 LATERAL_RE = re.compile(
-    # [^()] (not dotall .) so the match can't span an EARLIER LATERAL's parens
-    # (e.g. a brand/comparison-window LATERAL before the time_periods one) — that
-    # over-match used to swallow CTE boundaries and drop a downstream CTE.
-    # match to the LATERAL's own closing paren ([^()] can't cross it); LIMIT 1 is
-    # optional (card 87's time_periods LATERAL has no LIMIT 1, others do).
-    r"LATERAL\s*\(\s*SELECT\s+[^()]*?FROM\s+metabase_filters\.time_periods[^()]*?\)",
+    # `(?:[^()]|\([^()]*\))` (not dotall .) so the match can't span an EARLIER LATERAL's
+    # parens (e.g. a brand/comparison-window LATERAL before the time_periods one) — that
+    # over-match used to swallow CTE boundaries and drop a downstream CTE. A bare [^()]
+    # class would however STOP at the first inner call/subquery paren INSIDE the
+    # time_periods LATERAL itself (e.g. WHERE d >= TO_DATE('…') LIMIT 1) and fail to match
+    # it at all; allowing ONE level of balanced parens matches such calls while still not
+    # crossing a fully-closed earlier LATERAL (its unmatched `)` breaks the alternation).
+    # LIMIT 1 is optional (card 87's time_periods LATERAL has no LIMIT 1, others do).
+    r"LATERAL\s*\(\s*SELECT\s+(?:[^()]|\([^()]*\))*?FROM\s+metabase_filters\.time_periods(?:[^()]|\([^()]*\))*?\)",
     re.I | re.S)
 GRANS = ["day", "week", "month", "year"]
 

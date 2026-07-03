@@ -10,30 +10,32 @@ de ces mêmes cartes a déjà été fixé — on reproduit exactement ce style).
 Effet du bug : fan-out multi-(language,zone) pour un client multi-zones -> volumes
 mensuels gonflés (~1.49x mesuré, cf. migration/antipattern-empirical.json).
 
-Sécurité (pattern batch_brand_fix) :
-1. dry-run par défaut : affiche les diffs, n'écrit rien.
-2. Remplacement de chaîne EXACT (pas de regex) : si la ligne attendue est absente
-   ou présente plusieurs fois, la carte est SAUTÉE et signalée.
-3. Snapshot JSON de chaque carte avant PUT -> migration/kp-join-fix-snapshots/.
-4. re-GET après PUT : le SQL persisté contient bien les 2 conditions ajoutées.
+Sécurité : c'est le MÊME anti-pattern A que fix_antipatterns.py corrige déjà (même
+famille de cartes SERP). On délègue donc à son harnais `process()` plutôt que de
+réimplémenter une variante plus faible. On récupère ainsi les garde-fous complets :
+  1. dry-run par défaut : preuve seule, n'écrit rien.
+  2. find/replace EXACT : si le find est absent (ou déjà corrigé), la carte est
+     SAUTÉE et signalée, jamais corrompue.
+  3. PREUVE LECTURE SEULE avant tout PUT : OLD et NEW exécutés via /api/dataset
+     (mêmes substitutions de tags, scope client Tradis multi-zones) + GATE A —
+     lignes(NEW) <= lignes(OLD), car retirer le fan-out ne peut que réduire les
+     lignes ; abort sinon. (l'ancienne version ne vérifiait QUE la persistance de
+     la chaîne, jamais l'exécution : un join subtilement faux passait pour un succès.)
+  4. --yes : backup JSON + PUT, puis re-GET + run live ; REVERT auto si la carte casse.
 
 Usage :
-  .venv/bin/python scripts/fix_kp_monthly_join_cards.py          # dry-run
-  .venv/bin/python scripts/fix_kp_monthly_join_cards.py --yes    # applique
+  .venv/bin/python scripts/fix_kp_monthly_join_cards.py          # dry-run (preuve)
+  .venv/bin/python scripts/fix_kp_monthly_join_cards.py --yes    # applique + vérifie
 """
 from __future__ import annotations
 
 import argparse
-import difflib
-import json
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
-from archive_collections import connect_resilient  # noqa: E402
-
-SNAP_DIR = REPO / "migration" / "kp-join-fix-snapshots"
+from fix_antipatterns import connect, process  # noqa: E402  (harnais A partagé : gate + revert)
 
 CARD_IDS = [28551, 28549, 28550, 28547]
 
@@ -44,69 +46,26 @@ NEW_JOIN = ("LEFT JOIN google_keyword_planner.kp__keyword_monthly_metrics "
             "AND kp__keyword_monthly_metrics.language = serp_requests.language "
             "AND kp__keyword_monthly_metrics.zone = serp_requests.zone,")
 
-
-def get_sql(card: dict) -> tuple[str, dict]:
-    """SQL natif d'une carte, formats stages (récent) et legacy."""
-    dq = card["dataset_query"]
-    if "stages" in dq:
-        return dq["stages"][0].get("native") or "", dq
-    return (dq.get("native") or {}).get("query") or "", dq
-
-
-def set_sql(dq: dict, sql: str) -> dict:
-    if "stages" in dq:
-        dq["stages"][0]["native"] = sql
-    else:
-        dq["native"]["query"] = sql
-    return dq
+FIXES = [(OLD_JOIN, NEW_JOIN)]
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--yes", action="store_true", help="applique réellement (sinon dry-run)")
+    ap.add_argument("--yes", action="store_true", help="applique réellement (sinon preuve/dry-run)")
     args = ap.parse_args()
-    mb = connect_resilient()
-    SNAP_DIR.mkdir(parents=True, exist_ok=True)
+    mb = connect()
 
-    ok, skipped = [], []
+    results = []
     for cid in CARD_IDS:
         card = mb.get(f"/api/card/{cid}")
-        if not isinstance(card, dict):
-            skipped.append((cid, f"GET KO: {card!r}"))
-            continue
-        sql, dq = get_sql(card)
-        n = sql.count(OLD_JOIN)
-        if n != 1:
-            already = "AND kp__keyword_monthly_metrics.language" in sql
-            skipped.append((cid, f"ligne attendue x{n}" + (" (déjà fixée ?)" if already else "")))
-            continue
+        name = card.get("name") if isinstance(card, dict) else "?"
+        res = process(mb, {"card_id": cid, "name": name}, FIXES, antipattern="A", apply=args.yes)
+        results.append(res)
 
-        new_sql = sql.replace(OLD_JOIN, NEW_JOIN)
-        # gate : SEULE la ligne du join change
-        assert new_sql.replace(NEW_JOIN, OLD_JOIN) == sql, f"gate statique KO carte {cid}"
-
-        print(f"\n### {cid} — {card.get('name')}")
-        for line in difflib.unified_diff(sql.splitlines(), new_sql.splitlines(),
-                                         lineterm="", n=1):
-            if line.startswith(("+", "-")) and not line.startswith(("+++", "---")):
-                print(f"  {line.strip()[:220]}")
-
-        if not args.yes:
-            ok.append(cid)
-            continue
-
-        (SNAP_DIR / f"{cid}.json").write_text(json.dumps(card, ensure_ascii=False, indent=1))
-        r = mb.put(f"/api/card/{cid}", "raw",
-                   json={"dataset_query": set_sql(dq, new_sql)}, timeout=180)
-        status = getattr(r, "status_code", r)
-        # re-GET : le SQL persisté contient bien le nouveau join
-        check, _ = get_sql(mb.get(f"/api/card/{cid}"))
-        persisted = NEW_JOIN in check
-        print(f"  PUT status={status} persisted={persisted}")
-        (ok if persisted else skipped).append(cid if persisted else (cid, f"PUT status={status}, non persisté"))
-
-    mode = "APPLIQUÉ" if args.yes else "DRY-RUN"
-    print(f"\n[{mode}] OK: {ok} | SKIP: {skipped}")
+    mode = "APPLIQUÉ" if args.yes else "DRY-RUN (preuve)"
+    ok = [r["id"] for r in results if r.get("status") in ("applied_ok", "proven", "already_fixed")]
+    ko = [(r["id"], r.get("status")) for r in results if r.get("status") not in ("applied_ok", "proven", "already_fixed")]
+    print(f"\n[{mode}] OK: {ok} | À VOIR: {ko}")
 
 
 if __name__ == "__main__":

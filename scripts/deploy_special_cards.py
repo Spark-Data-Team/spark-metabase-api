@@ -44,7 +44,10 @@ def _dcs(d):
 def card_metric_param(card, tag):
     for p in card.get("parameters") or []:
         tgt = p.get("target") or [None, [None, None]]
-        if p.get("slug") == tag or (isinstance(tgt[1], list) and tgt[1][-1] == tag):
+        # target mal formé (liste < 2, ou tgt[1] non-liste/vide) -> pas d'IndexError : on retombe
+        # sur le seul match par slug plutôt que de crasher tout le préflight sur un param douteux.
+        sub = tgt[1] if isinstance(tgt, list) and len(tgt) > 1 else None
+        if p.get("slug") == tag or (isinstance(sub, list) and sub and sub[-1] == tag):
             return p
     return None
 

@@ -35,16 +35,16 @@ def main():
         except Exception: pass
     special = scl.replacement_ids(entries)
 
-    sql_cache, slot_cache = {}, {}
+    card_cache = {}   # cid -> (colonnes conversion positionnelles, nom) ; 1 seul GET par carte
     def card_info(cid):
-        if cid not in sql_cache:
+        if cid not in card_cache:
             try:
-                sql, _ = conv_lib.native_and_tags(mb.get(f"/api/card/{cid}"))
-                cols = conv_lib.old_conversion_columns(sql)
-                sql_cache[cid] = cols
+                card = mb.get(f"/api/card/{cid}")
+                sql, _ = conv_lib.native_and_tags(card)
+                card_cache[cid] = (conv_lib.old_conversion_columns(sql), (card or {}).get("name", "")[:50])
             except Exception:
-                sql_cache[cid] = set()
-        return sql_cache[cid]
+                card_cache[cid] = (set(), "")
+        return card_cache[cid]
 
     acc = {}            # client -> {dash:set, v100:int, residue:int}
     blockers = set()    # (client, slot)
@@ -63,7 +63,7 @@ def main():
         for dc in _dcs(d):
             cid = dc.get("card_id")
             if not cid or cid in special: continue
-            cols = card_info(cid)
+            cols, cname = card_info(cid)
             if not cols: continue
             on_old = True
             # catégoriser par slot
@@ -75,7 +75,7 @@ def main():
                     blockers.add((client, slot))
                 else:
                     coverage.append({"client": client, "copy": copy, "card_id": cid,
-                                     "name": (mb.get(f"/api/card/{cid}") or {}).get("name", "")[:50]})
+                                     "name": cname})
                     break
         if on_old: a["residue"] += 1
         else: a["v100"] += 1
