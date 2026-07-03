@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests de conv_lib — script autonome. Usage : python3 tests/test_conv_lib.py"""
-import json, sys
+import json, re, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import conv_lib
@@ -414,7 +414,296 @@ def test_displayed_cells_restricts_and_sorts():
     assert 99.0 in conv_lib.displayed_cells(cols, rows, None)
 
 
+def test_split_pairs_single():
+    assert conv_lib.split_multiselect_pairs("Main conversion", "Purchases") == ([("Main conversion", "Purchases")], False)
+
+def test_split_pairs_equal_multi_positional():
+    pairs, amb = conv_lib.split_multiselect_pairs("Add to cart,3rd conversion", "Add to cart,Custom 2")
+    assert pairs == [("Add to cart", "Add to cart"), ("3rd conversion", "Custom 2")] and amb is False
+
+def test_split_pairs_type_without_new_type_is_unmapped_not_ambiguous():
+    assert conv_lib.split_multiselect_pairs("2nd conversion", "") == ([("2nd conversion", None)], False)
+
+def test_split_pairs_cardinality_mismatch_flags_ambiguous():
+    pairs, amb = conv_lib.split_multiselect_pairs("Main conversion,1st conversion", "Purchases")
+    assert pairs == [("Main conversion", None), ("1st conversion", None)] and amb is True
+
+def test_split_pairs_trims_whitespace_and_empty_type():
+    assert conv_lib.split_multiselect_pairs(" Main conversion , 1st conversion ", "Purchases, Custom 1")[0] == \
+        [("Main conversion", "Purchases"), ("1st conversion", "Custom 1")]
+    assert conv_lib.split_multiselect_pairs("", "") == ([], False)
+
+def _visualizer_viz(src_cid):
+    return {"visualization": {"display": "line", "columnValuesMapping": {
+        "COLUMN_1": [{"sourceId": f"card:{src_cid}", "originalName": "CPC", "name": "COLUMN_1"}],
+        "COLUMN_2": [{"sourceId": f"card:{src_cid}", "originalName": "TIME_PERIOD", "name": "COLUMN_2"}]},
+        "settings": {"graph.metrics": ["COLUMN_1"]}}}
+
+def test_repoint_visualizer_rewrites_all_source_refs():
+    out = conv_lib.repoint_visualizer_source(_visualizer_viz(2116), 2116, 49953)
+    refs = {m[0]["sourceId"] for m in out["visualization"]["columnValuesMapping"].values()}
+    assert refs == {"card:49953"}
+
+def test_repoint_visualizer_noop_when_no_visualizer():
+    viz = {"graph.dimensions": ["TIME_PERIOD"], "graph.metrics": ["CPC"]}
+    assert conv_lib.repoint_visualizer_source(viz, 2116, 49953) == viz
+
+def test_repoint_visualizer_does_not_touch_other_cards():
+    # une réf vers une AUTRE carte (card:21160) ne doit pas être altérée par old=2116
+    viz = {"visualization": {"columnValuesMapping": {
+        "C1": [{"sourceId": "card:21160", "originalName": "X", "name": "C1"}]}}}
+    out = conv_lib.repoint_visualizer_source(viz, 2116, 49953)
+    assert out["visualization"]["columnValuesMapping"]["C1"][0]["sourceId"] == "card:21160"
+
+def test_repoint_visualizer_noop_old_equals_new_and_none():
+    viz = _visualizer_viz(2116)
+    assert conv_lib.repoint_visualizer_source(viz, 2116, 2116) is viz
+    assert conv_lib.repoint_visualizer_source(None, 2116, 49953) is None
+
+def test_substitute_viz_preserves_human_labels_but_swaps_column_refs():
+    viz = {
+        "card.title": "Conversions",                       # libellé humain -> INCHANGÉ
+        "graph.metrics": ["conversions", "cac"],           # réfs colonnes -> substituées
+        "graph.x_axis.title_text": "Conversions par jour", # libellé axe -> INCHANGÉ
+        "scalar.field": "conversions",                     # réf colonne -> substituée
+        "series_settings": {"conversions": {"title": "Mes Conversions", "color": "#fff"}},
+        "column_settings": {'["name","CONVERSIONS"]': {"column_title": "Conversions", "number_style": "decimal"}},
+    }
+    out = conv_lib.substitute_viz(viz, {"CONVERSIONS": "PURCHASES"})
+    assert out["card.title"] == "Conversions"                       # titre préservé
+    assert out["graph.metrics"] == ["purchases", "cac"]            # réfs substituées
+    assert out["graph.x_axis.title_text"] == "Conversions par jour"
+    assert out["scalar.field"] == "purchases"
+    assert "purchases" in out["series_settings"]                    # clé série substituée
+    assert out["series_settings"]["purchases"]["title"] == "Mes Conversions"  # titre série préservé
+    assert '["name","PURCHASES"]' in out["column_settings"]         # clé column_settings substituée
+    assert out["column_settings"]['["name","PURCHASES"]']["column_title"] == "Conversions"  # column_title préservé
+
+def test_substitute_viz_noop_on_empty():
+    assert conv_lib.substitute_viz({}, {"CONVERSIONS": "PURCHASES"}) == {}
+    assert conv_lib.substitute_viz(None, {"CONVERSIONS": "PURCHASES"}) is None
+
+def test_conversion_display_names_maps_slots_and_skips_unmapped():
+    cmap = {0: "Purchases", 1: "__UNMAPPED__", 2: "Custom 2"}
+    assert conv_lib.conversion_display_names({"CONVERSIONS": "PURCHASES"}, cmap) == {"Purchases"}
+    assert conv_lib.conversion_display_names(["CONVERSIONS_2"], cmap) == {"Custom 2"}
+    assert conv_lib.conversion_display_names(["CONVERSIONS_1"], cmap) == set()  # __UNMAPPED__ ignoré
+
+def test_relabel_generic_title_to_named_conversion():
+    assert conv_lib.relabel_conversion_title("Conversions", {"Purchases"}) == "Purchases"
+    assert conv_lib.relabel_conversion_title("conversion", {"Leads"}) == "Leads"
+
+def test_relabel_preserves_business_label_and_rates():
+    assert conv_lib.relabel_conversion_title("Demandes de devis", {"Purchases"}) == "Demandes de devis"
+    assert conv_lib.relabel_conversion_title("Conversion rate", {"Purchases"}) == "Conversion rate"
+
+def test_relabel_preserves_when_ambiguous_or_no_display():
+    assert conv_lib.relabel_conversion_title("Conversions", {"Purchases", "Leads"}) == "Conversions"
+    assert conv_lib.relabel_conversion_title("Conversions", set()) == "Conversions"
+
+def test_is_required_param_error_recognizes_benign_cases():
+    assert conv_lib.is_required_param_error('Cannot run the query: missing required parameters: #{"bonus"}')
+    assert conv_lib.is_required_param_error("You'll need to pick a value for 'Breakdown'")
+    assert conv_lib.is_required_param_error("This parameter is required before this query can run")
+
+def test_is_required_param_error_false_on_real_sql_error():
+    assert not conv_lib.is_required_param_error("SQL compilation error: invalid identifier 'CONVERSIONS_X'")
+    assert not conv_lib.is_required_param_error("")
+    assert not conv_lib.is_required_param_error(None)
+
+def test_normalize_period_label_aligns_week_formats():
+    assert conv_lib.normalize_period_label("2026 - W22") == conv_lib.normalize_period_label("2026_22") == (2026, 22)
+    assert conv_lib.normalize_period_label("2026-05") == (2026, 5)
+    assert conv_lib.normalize_period_label("Total") == "TOTAL"  # sans chiffre -> libellé exact
+
+
+def test_drop_conversion_selects_removes_unmapped_positional():
+    # brique b : après substitution des slots mappés, retirer les items SELECT des slots NON mappés
+    # (y compris les dérivés cac_N qui référencent conversions_N) -> 0 colonne positionnelle (Iron Law).
+    sql = ("SELECT\n"
+           "  SUM(purchases) AS purchases,\n"
+           "  SUM(conversions_2) AS conversions_2,\n"
+           "  COALESCE(SUM(cost)/NULLIF(SUM(conversions_2),0),0) AS cac_2,\n"
+           "  SUM(conversion_2_value) AS conversion_2_value\n"
+           "FROM data")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()   # plus aucune colonne positionnelle
+    assert "purchases" in out                              # la conversion nommée (mappée) reste
+    assert "cac_2" not in out                              # le dérivé référençant conversions_2 part aussi
+    assert not re.search(r",\s*FROM", out)                 # pas de virgule pendante avant FROM
+
+
+def test_drop_conversion_selects_noop_when_no_positional():
+    sql = "SELECT SUM(purchases) AS purchases,\n  SUM(clicks) AS clicks\nFROM data"
+    assert conv_lib.drop_conversion_selects(sql) == sql
+
+
+def test_drop_conversion_selects_keeps_named_columns_around_dropped():
+    sql = ("SELECT\n"
+           "  channel,\n"
+           "  SUM(conversions_3) AS conversions_3,\n"
+           "  SUM(clicks) AS clicks\n"
+           "FROM data")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "channel" in out and "clicks" in out and "conversions_3" not in out
+
+
+def test_drop_conversion_selects_preserves_named_and_literals():
+    # named (custom_conversions_1, lookbehind '_') + littéral 'conversions_2' -> rien à retirer
+    sql = ("SELECT\n"
+           "  SUM(custom_conversions_1) AS custom_conversions_1,\n"
+           "  'conversions_2' AS note,\n"
+           "  SUM(clicks) AS clicks\n"
+           "FROM data")
+    assert conv_lib.drop_conversion_selects(sql) == sql
+
+
+def test_drop_conversion_selects_cascades_derived_passthrough():
+    # KPIs-evolution : conversions_2 (non mappé) alimente l'alias DÉRIVÉ current_conversions_2,
+    # passé tel quel dans un CTE aval. La CASCADE retire toute la chaîne (plus de no-op) -> SQL propre.
+    sql = ("WITH agg AS (\n"
+           "  SELECT\n"
+           "    SUM(conversions_2) AS current_conversions_2,\n"
+           "    SUM(clicks) AS clicks\n"
+           "  FROM data\n"
+           ")\n"
+           "SELECT\n"
+           "  current_conversions_2,\n"
+           "  clicks\n"
+           "FROM agg")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "current_conversions_2" not in out
+    assert "clicks" in out
+
+
+def test_drop_conversion_selects_cascades_multiline_case():
+    # le slot non mappé alimente une colonne d'évolution définie par un CASE MULTI-LIGNES ->
+    # l'item CASE entier doit être retiré (sinon CASE orphelin = SQL cassé).
+    sql = ("WITH agg AS (\n"
+           "  SELECT\n"
+           "    SUM(conversions_2) AS current_conversions_2,\n"
+           "    SUM(clicks) AS clicks\n"
+           "  FROM data\n"
+           ")\n"
+           "SELECT\n"
+           "  clicks,\n"
+           "  CASE\n"
+           "    WHEN current_conversions_2 = 0 THEN 0\n"
+           "    ELSE current_conversions_2 / clicks\n"
+           "  END AS conversions_2_evolution\n"
+           "FROM agg")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "conversions_2_evolution" not in out and "current_conversions_2" not in out
+    assert "CASE" not in out  # pas de CASE orphelin
+    assert "clicks" in out
+
+
+def test_drop_conversion_selects_keeps_mapped_slot_cascade():
+    # purchases (slot mappé, déjà substitué) garde son dérivé ; seul le cascade du slot NON mappé part.
+    sql = ("WITH agg AS (\n"
+           "  SELECT\n"
+           "    SUM(purchases) AS current_purchases,\n"
+           "    SUM(conversions_2) AS current_conversions_2,\n"
+           "    SUM(clicks) AS clicks\n"
+           "  FROM data\n"
+           ")\n"
+           "SELECT\n"
+           "  current_purchases,\n"
+           "  CASE WHEN clicks=0 THEN 0 ELSE current_purchases/clicks END AS purchases_cr,\n"
+           "  CASE WHEN clicks=0 THEN 0 ELSE current_conversions_2/clicks END AS conversions_2_cr\n"
+           "FROM agg")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "current_purchases" in out and "purchases_cr" in out       # slot mappé + dérivé préservés
+    assert "current_conversions_2" not in out and "conversions_2_cr" not in out  # slot non mappé retiré
+    assert "clicks" in out
+
+
+def test_drop_conversion_selects_ignores_block_comments():
+    # un commentaire /* … */ contenant FROM (et parenthèse déséquilibrée) ne doit PAS casser le
+    # découpage spans/items : sinon le span est borné trop tôt et le positionnel n'est pas retiré.
+    sql = ("SELECT\n"
+           "  /* note: ancienne logique FROM legacy, COALESCE( ... */\n"
+           "  SUM(conversions_2) AS conversions_2,\n"
+           "  SUM(clicks) AS clicks\n"
+           "FROM data")
+    out = conv_lib.drop_conversion_selects(sql)
+    assert conv_lib.old_conversion_columns(out) == set()   # conversions_2 bien retiré
+    assert "clicks" in out and "FROM data" in out          # colonne saine + vrai FROM intacts
+
+
+def test_value_diffs_none_when_identical():
+    oc = ["DATE", "CONVERSIONS"]; nc = ["DATE", "PURCHASES"]
+    rows = [["w1", 10], ["w2", 20]]
+    assert conv_lib.value_diffs(oc, rows, nc, [["w1", 10], ["w2", 20]], {"CONVERSIONS": "PURCHASES"}) == []
+
+
+def test_value_diffs_flags_mismatched_column():
+    oc = ["DATE", "CONVERSIONS"]; nc = ["DATE", "PURCHASES"]
+    d = conv_lib.value_diffs(oc, [["w1", 10], ["w2", 20]], nc, [["w1", 10], ["w2", 18]],
+                             {"CONVERSIONS": "PURCHASES"})
+    assert len(d) == 1 and d[0][0] == "CONVERSIONS" and d[0][1] == "PURCHASES"
+    assert d[0][2] == 30 and d[0][3] == 28      # (old_sum, new_sum)
+
+
+def test_value_diffs_ignores_row_order():
+    # comparaison par SOMME -> insensible à l'ordre des lignes (pas de faux positif)
+    oc = ["D", "CONVERSIONS"]; nc = ["D", "PURCHASES"]
+    d = conv_lib.value_diffs(oc, [["a", 10], ["b", 20]], nc, [["b", 20], ["a", 10]],
+                             {"CONVERSIONS": "PURCHASES"})
+    assert d == []
+
+
+def test_value_diffs_tolerates_float_noise():
+    oc = ["D", "CONVERSIONS"]; nc = ["D", "PURCHASES"]
+    assert conv_lib.value_diffs(oc, [["a", 1.0000000001]], nc, [["a", 1.0]],
+                                {"CONVERSIONS": "PURCHASES"}) == []
+
+
+def test_value_diffs_flags_when_sum_changes_via_rows():
+    # moins de lignes -> somme nommée < positionnel -> écart détecté
+    oc = ["D", "CONVERSIONS"]; nc = ["D", "PURCHASES"]
+    d = conv_lib.value_diffs(oc, [["a", 1], ["b", 2]], nc, [["a", 1]], {"CONVERSIONS": "PURCHASES"})
+    assert len(d) == 1 and d[0][0] == "CONVERSIONS"
+
+
+def test_value_diffs_skips_missing_column():
+    oc = ["D", "CONVERSIONS"]; nc = ["D"]   # carte générée sans la colonne nommée -> non comparable
+    assert conv_lib.value_diffs(oc, [["a", 1]], nc, [["a"]], {"CONVERSIONS": "PURCHASES"}) == []
+
+
+def test_has_dashboard_questions_detects_embedded_card():
+    dash = {"dashcards": [{"card": {"id": 1}}, {"card": {"id": 2, "dashboard_id": 99}}]}
+    assert conv_lib.has_dashboard_questions(dash) is True
+
+
+def test_has_dashboard_questions_false_when_none():
+    dash = {"dashcards": [{"card": {"id": 1}}, {"card": {"id": 2, "dashboard_id": None}}]}
+    assert conv_lib.has_dashboard_questions(dash) is False
+
+
+def test_has_dashboard_questions_handles_ordered_cards_and_missing_card():
+    assert conv_lib.has_dashboard_questions({"ordered_cards": [{"card": {}}, {}]}) is False
+    assert conv_lib.has_dashboard_questions({}) is False
+
+
 TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
+         test_has_dashboard_questions_detects_embedded_card, test_has_dashboard_questions_false_when_none,
+         test_has_dashboard_questions_handles_ordered_cards_and_missing_card,
+         test_drop_conversion_selects_removes_unmapped_positional,
+         test_drop_conversion_selects_noop_when_no_positional,
+         test_drop_conversion_selects_keeps_named_columns_around_dropped,
+         test_drop_conversion_selects_preserves_named_and_literals,
+         test_drop_conversion_selects_cascades_derived_passthrough,
+         test_drop_conversion_selects_cascades_multiline_case,
+         test_drop_conversion_selects_keeps_mapped_slot_cascade,
+         test_drop_conversion_selects_ignores_block_comments,
+         test_value_diffs_none_when_identical, test_value_diffs_flags_mismatched_column,
+         test_value_diffs_ignores_row_order, test_value_diffs_tolerates_float_noise,
+         test_value_diffs_flags_when_sum_changes_via_rows, test_value_diffs_skips_missing_column,
          test_native_and_tags_legacy_query_fallback, test_old_columns_detects_positional_not_custom,
          test_old_columns_base_not_matched_inside_positional, test_old_columns_ignores_conversion_type_filter,
          test_new_columns_named_and_custom, test_slot_old_columns, test_type_to_slot,
@@ -439,7 +728,17 @@ TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_strip_brand_atoms_idempotent_on_canonical_pair, test_table_column_map_main_slot_and_base,
          test_table_column_map_positional_slot_via_client_mapping, test_table_column_map_current_prefixed_source,
          test_table_column_map_evolution_columns, test_table_column_map_alias_names_and_bare_dim,
-         test_table_column_map_unmapped_slot_and_missing_target]
+         test_table_column_map_unmapped_slot_and_missing_target,
+         test_split_pairs_single, test_split_pairs_equal_multi_positional,
+         test_split_pairs_type_without_new_type_is_unmapped_not_ambiguous,
+         test_split_pairs_cardinality_mismatch_flags_ambiguous, test_split_pairs_trims_whitespace_and_empty_type,
+         test_repoint_visualizer_rewrites_all_source_refs, test_repoint_visualizer_noop_when_no_visualizer,
+         test_repoint_visualizer_does_not_touch_other_cards, test_repoint_visualizer_noop_old_equals_new_and_none,
+         test_substitute_viz_preserves_human_labels_but_swaps_column_refs, test_substitute_viz_noop_on_empty,
+         test_conversion_display_names_maps_slots_and_skips_unmapped, test_relabel_generic_title_to_named_conversion,
+         test_relabel_preserves_business_label_and_rates, test_relabel_preserves_when_ambiguous_or_no_display,
+         test_is_required_param_error_recognizes_benign_cases, test_is_required_param_error_false_on_real_sql_error,
+         test_normalize_period_label_aligns_week_formats]
 
 def run():
     failures = 0

@@ -20,10 +20,18 @@ sys.path.insert(0, str(REPO / "scripts"))
 from archive_collections import connect_resilient
 import conv_lib
 
-SANDBOX = 13885
-CTE = Path("/tmp/granularity_cte.sql").read_text()
+SANDBOX = 14115  # collection accessible sous 11673 (PAS le sandbox 13885/13851 — sinon tuiles vides conso)
+CTE = (REPO / "scripts" / "granularity_cte.sql").read_text()
 LATERAL_RE = re.compile(
-    r"LATERAL\s*\(\s*SELECT\s+.*?FROM\s+metabase_filters\.time_periods.*?LIMIT\s+1\s*\)",
+    # `(?:[^()]|\([^()]*\))` (not dotall .) so the match can't span an EARLIER LATERAL's
+    # parens (e.g. a brand/comparison-window LATERAL before the time_periods one) — that
+    # over-match used to swallow CTE boundaries and drop a downstream CTE. A bare [^()]
+    # class would however STOP at the first inner call/subquery paren INSIDE the
+    # time_periods LATERAL itself (e.g. WHERE d >= TO_DATE('…') LIMIT 1) and fail to match
+    # it at all; allowing ONE level of balanced parens matches such calls while still not
+    # crossing a fully-closed earlier LATERAL (its unmatched `)` breaks the alternation).
+    # LIMIT 1 is optional (card 87's time_periods LATERAL has no LIMIT 1, others do).
+    r"LATERAL\s*\(\s*SELECT\s+(?:[^()]|\([^()]*\))*?FROM\s+metabase_filters\.time_periods(?:[^()]|\([^()]*\))*?\)",
     re.I | re.S)
 GRANS = ["day", "week", "month", "year"]
 
@@ -107,11 +115,15 @@ def convert_card(mb, cid, client, window, dry=False):
     """Crée une COPIE temporal-unit (sandbox 13885) d'une carte time-driven (conversion
     ou non), vérifiée sur les 4 granularités, inscrite au registre. Retourne new_id si
     OK, None sinon. Idempotent : si déjà au registre, renvoie l'id existant."""
-    reg = REPO / "migration" / f"tu-generic-{cid}.json"
+    from conv_paths import reg_dir
+    reg = reg_dir() / f"tu-generic-{cid}.json"   # par-client si CONV_REG_DIR (parallèle)
+    if not reg.exists() and (REPO / "migration" / f"tu-generic-{cid}.json").exists():
+        reg = REPO / "migration" / f"tu-generic-{cid}.json"  # réutilise un maître déjà converti
     if reg.exists():
         d = json.loads(reg.read_text())
         if d.get("verified"):
             return d["new_id"]
+    reg = reg_dir() / f"tu-generic-{cid}.json"   # écriture toujours dans le shard
     (REPO / "migration" / "snapshots").mkdir(parents=True, exist_ok=True)
     card = mb.get(f"/api/card/{cid}")
     (REPO / "migration" / "snapshots" / f"card-{cid}-genconv-before.json").write_text(json.dumps(card))

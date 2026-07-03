@@ -29,12 +29,18 @@ from migrate_dashboard_reuse import card_values_pinned
 
 
 def load_registry():
-    """{old_card_id: new_card_id} depuis migration/tu-generic-*.json (verified only)."""
+    """{old_card_id: new_card_id} depuis tu-generic-*.json (verified only). Lit le maître
+    migration/ ET le shard par-client (CONV_REG_DIR) ; le shard l'emporte (mode parallèle)."""
+    from conv_paths import reg_dir
     reg = {}
-    for f in sorted((REPO / "migration").glob("tu-generic-*.json")):
-        d = json.loads(f.read_text())
-        if d.get("verified") and d.get("new_id"):
-            reg[int(d["old_id"])] = int(d["new_id"])
+    dirs = [REPO / "migration"]
+    if reg_dir() != (REPO / "migration"):
+        dirs.append(reg_dir())   # le shard par-client écrase le maître pour les mêmes ids
+    for base in dirs:
+        for f in sorted(base.glob("tu-generic-*.json")):
+            d = json.loads(f.read_text())
+            if d.get("verified") and d.get("new_id"):
+                reg[int(d["old_id"])] = int(d["new_id"])
     return reg
 
 
@@ -82,7 +88,13 @@ def main():
         print(f"Auto-préparation de {len(plan['blockers'])} carte(s) bloquante(s) :")
         for b in list(plan["blockers"]):
             cid = b["card_id"]
-            new_id = convert_card(mb, cid, args.client, args.window) if not args.dry_prepare else None
+            try:
+                new_id = convert_card(mb, cid, args.client, args.window) if not args.dry_prepare else None
+            except Exception as e:
+                # une carte lente/cassée (timeout, SQL KO) ne doit pas tuer toute la bascule :
+                # on la traite comme non convertible (débranchée ou reste blocker explicite).
+                print(f"  ⚠️ {cid} convert_card a échoué ({type(e).__name__}) → traité non convertible")
+                new_id = None
             if new_id:
                 continue
             # non convertible : si la carte a un filtre date séparé ET n'est pas un tableau

@@ -52,9 +52,14 @@ NAMED_EXTRA = {"ADD_TO_CARTS": "CURRENT_ADD_TO_CARTS_NEW", "CAC_ATC": "CURRENT_A
 DC_FIELDS = ("card_id", "row", "col", "size_x", "size_y", "series", "parameter_mappings", "visualization_settings", "dashboard_tab_id")
 
 
-def card_rows(mb, cid, params, dim_col):
-    """{label_majuscule -> {COL: valeur}} ; exclut la ligne 'Total'. Alignement par
-    libellé insensible à la casse (ancien UPPER vs neuf INITCAP)."""
+def card_rows(mb, cid, params, dim_col, norm=None):
+    """{label -> {COL: valeur}} ; exclut la ligne 'Total'. Alignement par libellé insensible à la
+    casse. `norm` (optionnel) canonicalise le libellé pour aligner des formats différents (ex.
+    périodes '2026 - W22' vs '2026_22') → sinon le décalage de format empêche la compare cellule
+    et masque les vrais écarts. dim_col=None (dashcard sans colonne visible) → None : non alignable
+    donc non vérifiable → carte gardée sur l'ancien et signalée, au lieu de crasher tout le swap."""
+    if dim_col is None:
+        return None
     r = mb.post(f"/api/card/{cid}/query", json={"parameters": params}, timeout=300)
     if not isinstance(r, dict) or r.get("status") != "completed":
         return None
@@ -64,10 +69,10 @@ def card_rows(mb, cid, params, dim_col):
     di = cols.index(dim_col.upper())
     out = {}
     for row in r["data"]["rows"]:
-        lbl = str(row[di]).strip().upper()
-        if lbl in ("TOTAL", "∅", "NONE"):
+        raw = str(row[di]).strip()
+        if raw.upper() in ("TOTAL", "∅", "NONE"):
             continue
-        out[lbl] = {cols[i]: v for i, v in enumerate(row)}
+        out[norm(raw) if norm else raw.upper()] = {cols[i]: v for i, v in enumerate(row)}
     return out
 
 
@@ -109,7 +114,12 @@ def main():
         old_vsettings = dc.get("visualization_settings") or {}
         old_tc = old_vsettings.get("table.columns") or []
         old_vis = [c["name"] for c in old_tc if c.get("enabled")]
-        old_dim = old_vis[0] if old_vis else None
+        # table SANS table.columns explicite -> elle affiche TOUTES ses colonnes. On part alors de ses
+        # colonnes de RÉSULTAT : les conversions du client sont mappées, les slots positionnels inutilisés
+        # restent non mappés et seront MASQUÉS (pas bloquants) -> « garder seulement les conv réelles ».
+        implicit_cols = not old_vis
+        if implicit_cols:
+            old_vis = [x["name"] for x in (old_card.get("result_metadata") or [])]
         old_titles = {k: v.get("column_title") for k, v in (old_vsettings.get("column_settings") or {}).items()
                       if v.get("column_title")}
         target = mb.get(f"/api/card/{target_id}")
@@ -122,10 +132,17 @@ def main():
             if cand and cand in new_cols:
                 m[col] = cand
                 unmapped.remove(col)
+        # dimension d'alignement = ancienne colonne mappant vers dim_new (sinon 1ère visible)
+        old_dim = next((k for k, v in m.items() if v == dim_new), old_vis[0] if old_vis else None)
 
         # --- vérification cellule par cellule, alignée par libellé, brand=yes (inerte) ---
         old_params = list(base) + [brand_yes]
         _, old_tags = conv_lib.native_and_tags(old_card)
+        # params NUMBER requis sans défaut (ex. 'bonus') -> valeur neutre 0, sinon la carte ne s'exécute
+        # pas et la vérif est impossible (le dashboard les fournit à l'usage).
+        for tname, t in (old_tags or {}).items():
+            if (t or {}).get("type") == "number" and (t or {}).get("default") in (None, ""):
+                old_params.append({"type": "number/=", "value": 0, "target": ["variable", ["template-tag", tname]]})
         if is_temporal:  # n'épingler la granularité que pour le tableau by-date
             tp = bascule_lib.time_param_payload(old_tags, "week")
             if tp:
@@ -134,8 +151,9 @@ def main():
         if is_temporal:
             new_params.append({"type": "temporal-unit", "value": "week",
                                "target": ["dimension", ["template-tag", "time_period"]]})
-        orows = card_rows(mb, cid, old_params, old_dim)
-        nrows = card_rows(mb, target_id, new_params, dim_new)
+        nfn = conv_lib.normalize_period_label if is_temporal else None  # aligne les formats de période
+        orows = card_rows(mb, cid, old_params, old_dim, nfn)
+        nrows = card_rows(mb, target_id, new_params, dim_new, nfn)
         bad = []
         if orows is None or nrows is None:
             bad.append(("(exécution)", "(exécution)", None, None))
@@ -155,11 +173,15 @@ def main():
             if extra_rows:
                 bad.append(("(lignes)", "(lignes)", f"écart de lignes: {extra_rows[:6]}", "", len(extra_rows)))
 
-        # blocage DUR : exécution KO ou colonnes non mappées (jamais contournable)
-        hard = unmapped or any(b[0] == "(exécution)" for b in bad)
+        # blocage DUR : exécution KO toujours ; colonnes non mappées seulement pour une table à colonnes
+        # CHOISIES (table implicite -> on MASQUE les non mappées = slots positionnels inutilisés).
+        hard = (bool(unmapped) and not implicit_cols) or any(b[0] == "(exécution)" for b in bad)
         value_diffs = [b for b in bad if b[0] != "(exécution)"]
-        blocked = bool(hard) or (bool(value_diffs) and not args.accept_diffs)
-        status = "OK" if not bad and not unmapped else ("FORCÉ" if (value_diffs and args.accept_diffs and not hard) else "PARTIEL")
+        # DÉCISION user : tout ÉCART DE VALEUR bloque -> REVUE (on ne force jamais un écart réel ;
+        # --accept-diffs ne contourne plus les valeurs). unmapped d'une table implicite = colonnes
+        # positionnelles masquées, pas un écart.
+        blocked = bool(hard) or bool(value_diffs)
+        status = "OK" if (not bad and not unmapped) else ("À REVOIR (écart valeur)" if value_diffs else "PARTIEL")
         report.append({"card": cid, "target": target_id, "mapped": len(m), "unmapped": unmapped,
                        "bad": bad, "status": status, "blocked": blocked, "name": old_card.get("name")})
         if blocked:

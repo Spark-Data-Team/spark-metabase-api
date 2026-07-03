@@ -254,6 +254,289 @@ def apply_substitution(text, sub_map):
                         lambda m, n=new: n.lower() if m.group(0).islower() else n.upper(), masked)
     return _unmask_literals(masked, parts)
 
+
+def _select_item_alias(item_text):
+    """Alias d'un item SELECT : l'identifiant après le dernier ` AS ` (ex. `END AS conversions_2_evolution`),
+    sinon un item « colonne nue » (passthrough de CTE). None si non parsable. Tolère le multi-ligne."""
+    t = item_text.strip()
+    m = re.search(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", t, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    m2 = re.fullmatch(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*", t)
+    return m2.group(1) if m2 else None
+
+
+def _mask_sql(text):
+    """Masque littéraux '...', commentaires de BLOC `/* … */` ET de ligne `-- …` en placeholders
+    \\x00M<n>\\x00 (1 passe ; littéral prioritaire pour ne pas couper un -- ou /* à l'intérieur d'un
+    littéral). Sans ça, un `FROM`/virgule/parenthèse DANS un commentaire fausse le découpage des spans
+    et des items (span borné trop tôt → positionnel non retiré). Réversible via _unmask_sql."""
+    parts = []
+    def repl(m):
+        parts.append(m.group(0))
+        return f"\x00M{len(parts) - 1}\x00"
+    return re.sub(r"'(?:[^']|'')*'|/\*.*?\*/|--[^\n]*", repl, text, flags=re.S), parts
+
+
+def _unmask_sql(masked, parts):
+    return re.sub(r"\x00M(\d+)\x00", lambda m: parts[int(m.group(1))], masked)
+
+
+def _select_spans(masked):
+    """Spans (start,end) du CONTENU de chaque liste SELECT (entre `SELECT` et son `FROM` au MÊME
+    niveau de parenthèses). Gère CTE imbriquées et UNION (chaque SELECT a son FROM)."""
+    spans, depth, open_sel = [], 0, []
+    for m in re.finditer(r"\(|\)|\bSELECT\b|\bFROM\b", masked, re.IGNORECASE):
+        t = m.group(0).upper()
+        if t == "(":
+            depth += 1
+        elif t == ")":
+            depth -= 1
+        elif t == "SELECT":
+            open_sel.append((depth, m.end()))
+        elif t == "FROM" and open_sel and open_sel[-1][0] == depth:
+            _, start = open_sel.pop()
+            spans.append((start, m.start()))
+    return spans
+
+
+def _split_top_level(seg):
+    """Découpe un segment de liste SELECT en items, sur les virgules au niveau de parenthèses 0
+    (les virgules internes COALESCE(a,b) restent dans l'item). Renvoie des plages (a,b)."""
+    out, depth, last = [], 0, 0
+    for i, ch in enumerate(seg):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            out.append((last, i)); last = i + 1
+    out.append((last, len(seg)))
+    return out
+
+
+def _refs_any(text, names):
+    """True si `text` référence (mot entier, insensible à la casse) un des `names`."""
+    return any(re.search(rf"(?<![A-Za-z0-9_]){re.escape(n)}(?![A-Za-z0-9_])", text, re.IGNORECASE)
+               for n in names)
+
+
+def drop_conversion_selects(sql):
+    """Brique b — retire du SQL généré les ITEMS SELECT qui dépendent d'une colonne de conversion
+    POSITIONNELLE NON mappée (CONVERSIONS / CONVERSIONS_N / CONVERSION_N_VALUE / CONVERSION_VALUE).
+    Objectif : après `apply_substitution` (slots MAPPÉS → colonnes nommées), supprimer les slots NON
+    mappés pour que la carte ne référence PLUS aucune colonne positionnelle → Iron Law (« garder
+    seulement les conversions réelles »).
+
+    Parseur SELECT-aware + CASCADE d'alias (fixpoint) : un item SELECT est retiré s'il référence un
+    nom « tué » ; son alias rejoint alors l'ensemble tué → on retire aussi les colonnes DÉRIVÉES
+    (`current_conversions_N`, `*_evolution`, `cac_N`, `cr_N`…) sur tous les CTE, y compris les items
+    CASE MULTI-LIGNES. Les slots MAPPÉS et leurs dérivés sont préservés (jamais dans l'ensemble tué).
+
+    Self-safe (pur, zéro régression) — renvoie le SQL INCHANGÉ si : aucune colonne positionnelle ;
+    pas de liste SELECT détectée ; une liste serait entièrement vidée ; il reste une colonne
+    positionnelle après coup ; ou une référence pendante vers un alias supprimé subsiste. (Filet
+    ultime en aval : render_ok archive tout SQL cassé.)"""
+    if not sql:
+        return sql
+    seed = {c.lower() for c in old_conversion_columns(sql)}
+    if not seed:
+        return sql
+    masked, parts = _mask_sql(sql)
+    spans = _select_spans(masked)
+    if not spans:
+        return sql
+    span_items, all_items = [], []
+    for si, (s, e) in enumerate(spans):
+        seg = masked[s:e]
+        items = []
+        for a, b in _split_top_level(seg):
+            text = seg[a:b]
+            if not text.strip():
+                continue
+            al = _select_item_alias(text)
+            items.append({"text": text, "alias": al.lower() if al else None, "drop": False})
+        span_items.append(items); all_items.extend(items)
+
+    kill, changed = set(seed), True
+    while changed:
+        changed = False
+        for it in all_items:
+            if not it["drop"] and _refs_any(it["text"], kill):
+                it["drop"] = True
+                if it["alias"]:
+                    kill.add(it["alias"])
+                changed = True
+
+    out = masked
+    for si in range(len(spans) - 1, -1, -1):      # de la fin au début : indices stables
+        items = span_items[si]
+        kept = [it["text"] for it in items if not it["drop"]]
+        if len(kept) == len(items):
+            continue
+        if not kept:
+            return sql                            # liste SELECT vidée -> SQL invalide -> no-op
+        s, e = spans[si]
+        seg = masked[s:e]
+        lead = seg[:len(seg) - len(seg.lstrip())]
+        trail = seg[len(seg.rstrip()):]
+        body = ("," + lead).join(t.strip() for t in kept)
+        out = out[:s] + lead + body + trail + out[e:]
+
+    result = _unmask_sql(out, parts)
+    if old_conversion_columns(result):            # positionnelle subsistante (hors liste SELECT) -> no-op
+        return sql
+    dropped_aliases = {it["alias"] for it in all_items if it["drop"] and it["alias"]}
+    masked_result, _ = _mask_sql(result)
+    if _refs_any(masked_result, dropped_aliases):  # référence pendante -> drop non sûr -> no-op
+        return sql
+    return result
+
+
+def has_dashboard_questions(dash):
+    """True si le dashboard contient des « Dashboard Questions » (cartes intégrées AU dashboard,
+    repérées par `card.dashboard_id` renseigné). Metabase REFUSE alors la copie shallow
+    (`is_deep_copy:false`) → il faut une deep copy. Pur."""
+    dcs = (dash or {}).get("dashcards") or (dash or {}).get("ordered_cards") or []
+    return any((dc.get("card") or {}).get("dashboard_id") for dc in dcs)
+
+
+def _close(a, b, tol=1e-6):
+    if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+        return a == b
+    return a == b or abs(a - b) <= tol * max(abs(a), abs(b), 1e-12)
+
+
+def value_diffs(old_cols, old_rows, new_cols, new_rows, sub_map, tol=1e-6):
+    """Garde-fou VALEUR de generate_fallback (= policy user « écart de valeur → revue »). Pour chaque
+    slot mappé (sub_map OLD→NEW), compare la SOMME de la colonne entre la carte ORIGINALE (colonne
+    positionnelle) et la carte GÉNÉRÉE (colonne nommée) — comparaison **indépendante de l'ordre des
+    lignes** (robuste aux cartes sans ORDER BY). Renvoie [(old_col, new_col, old_sum, new_sum)] pour
+    les colonnes dont la somme diffère (> tolérance). Vide = fidèle. Pur. Une colonne absente d'un des
+    deux jeux est ignorée (non comparable, pas un écart). Choix SOMME (vs cellule) : le risque réel est
+    un nommé qui compte AUTREMENT que le positionnel (écart systématique, ex. Toploc/TuneCore) — la
+    somme le capte sans faux positif d'ordre."""
+    def colsum(cols, rows, name):
+        idx = {str(c).upper(): i for i, c in enumerate(cols)}
+        i = idx.get(name.upper())
+        if i is None:
+            return None
+        return sum(r[i] for r in rows if isinstance(r[i], (int, float)))
+    diffs = []
+    for oc, nc in sub_map.items():
+        os_, ns_ = colsum(old_cols, old_rows, oc), colsum(new_cols, new_rows, nc)
+        if os_ is None or ns_ is None:
+            continue
+        if not _close(os_, ns_, tol):
+            diffs.append((oc, nc, os_, ns_))
+    return diffs
+
+
+def repoint_visualizer_source(viz_settings, old_cid, new_cid):
+    """Dashcard « visualizer » (Metabase) : la viz combine des colonnes de cartes SOURCES,
+    référencées par "card:<id>" dans visualization.columnValuesMapping (et dataSources). Quand
+    on repointe un dashcard d'une carte old_cid -> new_cid, il faut AUSSI réécrire ces réfs,
+    sinon le visualizer source l'ANCIENNE carte (positionnelle) = tuile vide. Réécrit le token
+    EXACT "card:<old_cid>" -> "card:<new_cid>" (n'altère pas card:<old_cid>X). No-op si viz
+    None / sans cette réf / old_cid==new_cid. Pur."""
+    if not viz_settings or old_cid is None or new_cid is None or old_cid == new_cid:
+        return viz_settings
+    s = json.dumps(viz_settings, ensure_ascii=False)
+    token = f'"card:{old_cid}"'
+    if token not in s:
+        return viz_settings
+    return json.loads(s.replace(token, f'"card:{new_cid}"'))
+
+# Clés de viz qui portent un LIBELLÉ HUMAIN (jamais une réf de colonne) -> à NE PAS substituer.
+VIZ_LABEL_KEYS = frozenset({
+    "card.title", "title", "title_text", "column_title",
+    "graph.x_axis.title_text", "graph.y_axis.title_text",
+})
+
+def substitute_viz(viz, sub_map):
+    """Substitue les RÉFÉRENCES de colonnes dans une viz (graph.metrics/dimensions, clés
+    series_settings & column_settings, scalar.field, table.columns[].name…) SANS toucher aux
+    LIBELLÉS humains (card.title, titres d'axes/séries, column_title). La substitution brute
+    sur le JSON entier corrompait les titres : un card.title='Conversions' devenait 'PURCHASES'.
+    Récursif ; substitue les CLÉS (réfs) et les VALEURS string, mais garde intacte la valeur
+    d'une clé-libellé. No-op si viz vide. Pur."""
+    if not viz:
+        return viz
+    def walk(node):
+        if isinstance(node, dict):
+            out = {}
+            for k, v in node.items():
+                nk = apply_substitution(k, sub_map) if isinstance(k, str) else k
+                out[nk] = v if (isinstance(k, str) and k in VIZ_LABEL_KEYS) else walk(v)
+            return out
+        if isinstance(node, list):
+            return [walk(x) for x in node]
+        if isinstance(node, str):
+            return apply_substitution(node, sub_map)
+        return node
+    return walk(viz)
+
+# libellés de tuile GÉNÉRIQUES (conversion non nommée) -> remplaçables par la conversion nommée.
+# Les libellés MÉTIER choisis par le consultant (« Demandes de devis », « Ventes »…) sont préservés.
+GENERIC_CONV_TITLES = frozenset({"conversions", "conversion", "main conversion"})
+
+def conversion_display_names(old_cols, cmap):
+    """Noms d'affichage (Airtable) des conversions NOMMÉES qu'une tuile mesure : pour chaque ancienne
+    colonne conversion -> slot -> cmap[slot]. `old_cols` = sub_map (dict, clés=colonnes) ou itérable
+    de colonnes. Ignore les slots non mappés / en conflit."""
+    cols = old_cols.keys() if isinstance(old_cols, dict) else old_cols
+    out = set()
+    for c in cols:
+        v = cmap.get(_slot_of(c))
+        if v and v not in ("__UNMAPPED__", "__CONFLICT__"):
+            out.add(v)
+    return out
+
+def relabel_conversion_title(old_title, display_names):
+    """Si old_title est un libellé de conversion GÉNÉRIQUE et que la tuile mesure UNE seule conversion
+    nommée, renvoie son nom d'affichage ; sinon garde old_title (préserve les libellés métier). Pur."""
+    uniq = sorted(n for n in display_names if n)
+    if len(uniq) == 1 and str(old_title or "").strip().lower() in GENERIC_CONV_TITLES:
+        return uniq[0]
+    return old_title
+
+def normalize_period_label(s):
+    """Canonicalise un libellé de PÉRIODE pour aligner des formats différents (ex. '2026 - W22'
+    et '2026_22' -> (2026, 22)) : extrait les groupes de chiffres dans l'ordre. Sans chiffre,
+    renvoie la chaîne nettoyée majuscule (= libellé exact). Sûr à granularité FIXÉE (semaine vs
+    mois ne se télescopent pas dans une même comparaison). Pur."""
+    s = str(s).strip()
+    nums = re.findall(r"\d+", s)
+    return tuple(int(n) for n in nums) if nums else s.upper()
+
+def is_required_param_error(err):
+    """True si l'erreur d'exécution = un paramètre REQUIS non fourni (param obligatoire sans défaut,
+    fourni par le dashboard à l'usage) et NON une vraie erreur SQL : « pick a value for X », « before
+    this query can run », « missing required parameter(s) X ». La carte est alors structurellement OK
+    (à NE PAS archiver). Pur."""
+    low = str(err or "").lower()
+    return ("pick a value" in low or "before this query can run" in low
+            or "missing required parameter" in low)
+
+def split_multiselect_pairs(type_cell, new_type_cell):
+    """Aplatit une ligne Airtable où `type` et `new_type` sont des multi-select (CSV =
+    valeurs jointes par virgule). Retourne (pairs, ambiguous) :
+      pairs     = [(type, new_type | None)] ;
+      ambiguous = True si on ne peut PAS pairer sûrement (cardinalités ≠ et non vides) -> Gaby.
+    Pairing POSITIONNEL quand les cardinalités correspondent (convention de saisie observée :
+    'Main conversion,1st conversion' / 'Purchases,Custom 1'). Un `type` sans `new_type` = slot
+    non mappé (None), pas ambigu."""
+    types = [t.strip() for t in (type_cell or "").split(",") if t.strip()]
+    news = [n.strip() for n in (new_type_cell or "").split(",") if n.strip()]
+    if not types:
+        return [], False
+    if len(news) == len(types):
+        return list(zip(types, news)), False
+    if not news:
+        return [(t, None) for t in types], False
+    return [(t, None) for t in types], True  # cardinalités ≠ -> pairing impossible -> à trancher (Gaby)
+
+
 def build_client_mappings(records):
     """records: [{client, type, new_type}] -> {client: {slot: new_type | UNMAPPED | CONFLICT}}."""
     seen = defaultdict(lambda: defaultdict(set))

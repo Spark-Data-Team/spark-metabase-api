@@ -69,7 +69,24 @@ def test_render_markdown_escapes_pipes_in_values():
     assert "Ecomm \\| Home" in md
 
 
+def test_merge_trackers_adds_new_and_updates_same_key_no_loss():
+    master = [{"client": "A", "original_id": 1, "copy_id": 10, "status": "migré"},
+              {"client": "B", "original_id": 2, "copy_id": 20, "status": "migré"}]
+    shard = [{"client": "B", "original_id": 2, "copy_id": 20, "status": "validé"},   # même clé -> update
+             {"client": "C", "original_id": 3, "copy_id": 30, "status": "migré"}]    # nouveau -> ajout
+    out = T.merge_trackers(master, shard)
+    assert len(out) == 3                                   # A gardé, B mis à jour, C ajouté
+    b = [e for e in out if e["client"] == "B"][0]
+    assert b["status"] == "validé"                         # shard l'emporte sur même clé
+    assert [e["client"] for e in out] == ["A", "B", "C"]   # ordre maître préservé, nouveaux à la fin
+
+def test_merge_trackers_empty_shard_is_identity():
+    master = [{"client": "A", "original_id": 1, "copy_id": 10}]
+    assert T.merge_trackers(master, []) == master
+
+
 TESTS = [test_apply_tag_appends_when_absent, test_apply_tag_idempotent, test_is_tagged_detects_anchor,
+         test_merge_trackers_adds_new_and_updates_same_key_no_loss, test_merge_trackers_empty_shard_is_identity,
          test_upsert_entry_appends_new, test_upsert_entry_merges_existing_no_dup_keeps_order,
          test_archivable_requires_explicit_optin_and_known_original, test_archivable_empty_when_nothing_opted_in,
          test_render_markdown_has_row_per_entry, test_render_markdown_escapes_pipes_in_values]

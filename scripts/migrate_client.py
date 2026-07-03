@@ -15,6 +15,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 from archive_collections import connect_resilient
 import conv_tracker
+import conv_lib
 
 PY = str(REPO / ".venv" / "bin" / "python")
 
@@ -25,6 +26,10 @@ def run_step(script, copy, client, extra, yes):
         cmd.append("--yes")
     out = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     tail = "\n".join((out.stdout or "").strip().splitlines()[-4:])
+    # exit≠0 : remonter aussi le stderr (sys.exit bénin « Pas de param… » OU vrai traceback) —
+    # sans ça, les deux sont indistinguables (sortie = juste la ligne d'auth). Levée du point aveugle.
+    if out.returncode != 0 and (out.stderr or "").strip():
+        tail += "\n  [stderr] " + "\n  [stderr] ".join((out.stderr).strip().splitlines()[-3:])
     return tail, (out.returncode == 0)
 
 
@@ -43,11 +48,13 @@ def main():
         d = mb.get(f"/api/dashboard/{orig}")
         name = d.get("name", str(orig))
         copy_name = conv_tracker.apply_tag(f"{args.name_prefix} {name}")  # ancre de campagne
+        # « Dashboard Questions » (cartes intégrées) → Metabase refuse la copie shallow → deep copy.
+        deep = conv_lib.has_dashboard_questions(d)
         cp = mb.post(f"/api/dashboard/{orig}/copy",
                      json={"name": copy_name, "collection_id": args.test_collection,
-                           "is_deep_copy": False})
+                           "is_deep_copy": deep})
         copy = cp.get("id") if isinstance(cp, dict) else None
-        print(f"\n### {orig} «{name}» → copie {copy}")
+        print(f"\n### {orig} «{name}» → copie {copy}" + ("  [deep copy: Dashboard Questions]" if deep else ""))
         if not copy:
             print("  ⛔ copie échouée"); continue
         # consigne la paire ancien→copie dans le registre (pilote archive_superseded.py)
@@ -58,6 +65,7 @@ def main():
         for script, extra in [
             ("migrate_dashboard_reuse.py", ["--source", str(orig), "--planned-temporal-unit", "--accept-diffs"]),
             ("swap_tables.py", ["--accept-diffs"]),
+            ("deploy_special_cards.py", []),    # cartes sélecteur #87 -> 49788 (AVANT la bascule)
             ("bascule_time_filter.py", ["--auto-prepare"]),
             ("generate_fallback.py", []),       # génère les tuiles sans équivalent (objectif 100%)
             ("polish_generated_viz.py", []),    # repolit la viz des cartes générées

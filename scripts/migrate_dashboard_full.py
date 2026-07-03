@@ -42,15 +42,28 @@ def card_values(mb, card_id, client, window):
     rows = (r or {}).get("data", {}).get("rows", []) or []
     return sorted(round(float(x), 4) for row in rows for x in row if isinstance(x, (int, float)))
 
-def generate_card(mb, old_card, sub_map, coll_id):
+def generate_card(mb, old_card, sub_map, coll_id, cmap=None, drop_unmapped=True):
     dq = json.loads(json.dumps(old_card["dataset_query"]))
+    # substitue les slots MAPPÉS (positionnel -> nommé) PUIS retire les slots NON mappés restants
+    # (brique b/cascade) -> la carte ne référence plus AUCUNE colonne positionnelle (Iron Law).
+    # drop_unmapped=False : on saute la cascade (auto-sûreté quand elle casserait une carte très
+    # complexe ; on garde alors la version substituée-seule qui REND, avec slots non mappés en rab).
+    def _sub(native):
+        out = conv_lib.apply_substitution(native, sub_map)
+        return conv_lib.drop_conversion_selects(out) if drop_unmapped else out
     for st in dq.get("stages", []) or []:
         if st.get("lib/type") == "mbql.stage/native":
-            st["native"] = conv_lib.apply_substitution(st["native"], sub_map)
+            st["native"] = _sub(st["native"])
     if dq.get("type") == "native":
-        dq["native"]["query"] = conv_lib.apply_substitution(dq["native"]["query"], sub_map)
-    viz = json.loads(conv_lib.apply_substitution(json.dumps(old_card.get("visualization_settings") or {}), sub_map))
-    r = mb.post("/api/card", json={"name": f"[migré] {old_card['name']}", "dataset_query": dq,
+        dq["native"]["query"] = _sub(dq["native"]["query"])
+    viz = conv_lib.substitute_viz(old_card.get("visualization_settings") or {}, sub_map)  # préserve les libellés humains
+    # titre générique (« Conversions ») -> conversion nommée (« Purchases ») ; libellé métier préservé
+    if cmap and viz.get("card.title"):
+        viz["card.title"] = conv_lib.relabel_conversion_title(
+            viz["card.title"], conv_lib.conversion_display_names(sub_map, cmap))
+    # nom propre (pas de préfixe « [migré] » : la tuile l'afficherait au consultant) ; la provenance
+    # vient de la collection dédiée 14115 + du registre generated-cards.json.
+    r = mb.post("/api/card", json={"name": old_card["name"], "dataset_query": dq,
                                    "display": old_card.get("display"), "visualization_settings": viz,
                                    "collection_id": coll_id})
     return r.get("id") if isinstance(r, dict) else None
