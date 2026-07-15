@@ -34,6 +34,14 @@ def fr(name,bt,extra=None):
     if extra:o.update(extra)
     return ["field",name,o]
 
+def bands(col,kind):
+    """Plages discrètes (single-color). Ordre serré->large (1ère règle qui matche gagne)."""
+    if kind=="rank":  # vert, foncé = bonne position (basse)
+        steps=[(3,"#0B5226"),(10,"#2E7D32"),(20,"#66BB6A"),(50,"#A5D6A7"),(100,"#E8F5E9")]; op="<="
+    else:             # clics, bleu, foncé = beaucoup
+        steps=[(100,"#2E6CA8"),(50,"#5B8DC0"),(25,"#9CC0E0"),(10,"#DCE9F5")]; op=">="
+    return [{"columns":[col],"type":"single","operator":op,"value":v,"color":c} for v,c in steps]
+
 def upsert(mb,name,payload):
     for it in mb.get(f"/api/collection/{COLL}/items?limit=2000").get("data",[]):
         if it.get("model")=="card" and it.get("name")==name:
@@ -62,9 +70,7 @@ def main():
             json.dumps(["name","avg"]):{"column_title":"Rank","number_style":"decimal","decimals":0},
             json.dumps(["name","sum_2"]):{"column_title":"Impressions","number_style":"decimal","decimals":0},
             json.dumps(["name","sum_3"]):{"column_title":"Clics","number_style":"decimal","decimals":0}},
-        "table.column_formatting":[
-            {"columns":["avg"],"type":"range","colors":["#84BB4C","#ED6E6E"],
-             "min_type":"custom","min_value":1,"max_type":"custom","max_value":100}]}
+        "table.column_formatting": bands("avg","rank") + bands("sum_3","clics")}
     CID,how=upsert(mb,CARD_NAME,{"name":CARD_NAME,"collection_id":COLL,
         "dataset_query":dq,"display":"pivot","visualization_settings":viz,
         "description":"Suivi inversé : mois en lignes, mots-clés en colonnes ; sous chaque kw Volume (kp, ~constant car dernier connu) / Rank (avg POSITION, heatmap 1→100) / Impressions / Clics (GSC, échantillonné). Filtrable Marché/Gamme/Catégorie/Mot-clé/Période. Source modèle #48633."})
