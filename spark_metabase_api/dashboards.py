@@ -27,10 +27,15 @@ def get_dashboard(client, dashboard_id: int) -> Dict[str, Any]:
 
 def put_dashboard(client, dashboard_id: int, changes: Dict[str, Any],
                   verify: bool = True) -> Dict[str, Any]:
-    """Applique `changes` à un dashboard sans rien perdre d'autre.
+    """Applique `changes` à un dashboard en préservant sa structure.
 
-    `changes` ne contient QUE ce qu'on veut modifier. Tout le reste est relu
-    depuis l'instance et réinjecté, y compris les onglets et les filtres.
+    `changes` ne contient QUE ce qu'on veut modifier. Sont relus depuis
+    l'instance et réinjectés : `tabs`, `parameters`, `dashcards`, c'est-à-dire
+    les trois champs dont l'omission casse ou vide le dashboard.
+
+    Les AUTRES champs (`description`, `collection_id`, `cache_ttl`,
+    `auto_apply_filters`, ...) ne sont pas renvoyés : Metabase les conserve sur
+    un PUT partiel. Si tu en modifies un, passe-le explicitement dans `changes`.
     """
     avant = get_dashboard(client, dashboard_id)
 

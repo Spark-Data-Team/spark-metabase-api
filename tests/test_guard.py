@@ -53,7 +53,8 @@ def test_un_echec_sur_l_echantillon_arrete_le_lot(tmp_path):
     assert vus == [1, 2], "on s'arrête à l'objet fautif"
     assert not rap.ok()
     msgs = " ".join(f.message for f in rap.findings)
-    assert "n'ont PAS été touchés" in msgs
+    assert "NON touché" in msgs
+    assert "5 NON touché(s)" in msgs, "le compte d'objets intacts doit être juste"
     assert "guard.restore" in msgs, "le message doit donner la commande de rollback"
 
 
@@ -105,3 +106,80 @@ def test_restore_refuse_un_id_absent_du_snapshot(tmp_path):
 def test_kind_inconnu_est_refuse():
     with pytest.raises(ValueError, match="kind doit être"):
         guard.snapshot(_client(), "widget", [1])
+
+
+# --- Corrections issues de la revue de code (2026-08-17) ---
+
+def test_le_snapshot_n_ecrase_jamais_un_snapshot_existant(tmp_path):
+    """Le nom était {etiquette}-{kind}-{len(ids)}.json, donc relancer un lot
+    après un échec réécrivait le snapshot d'AVANT mutation avec l'état DÉJÀ
+    muté. Le rollback restaurait alors les dégâts."""
+    c = _client()
+    a = guard.snapshot(c, "card", [1, 2], dossier=str(tmp_path))
+    b = guard.snapshot(c, "card", [1, 2], dossier=str(tmp_path))
+    assert a != b, "deux snapshots du même lot doivent avoir des noms distincts"
+    assert len(list(tmp_path.glob("*.json"))) == 2, \
+        "le second ne doit pas avoir écrasé le premier"
+
+
+def test_le_snapshot_refuse_d_ecraser_un_fichier_existant(tmp_path, monkeypatch):
+    """Même avec un horodatage figé, l'écrasement est refusé plutôt que subi."""
+    c = _client()
+    monkeypatch.setattr(guard, "_horodatage", lambda: "FIGE")
+    guard.snapshot(c, "card", [1, 2], dossier=str(tmp_path))
+    with pytest.raises(FileExistsError, match="Refus d'écraser"):
+        guard.snapshot(c, "card", [1, 2], dossier=str(tmp_path))
+
+
+def test_restore_avec_une_liste_vide_ne_restaure_rien(tmp_path):
+    """`ids=[]` est l'appel naturel après un lot sans échec. Le test `if ids`
+    le confondait avec None et réécrivait TOUS les objets du snapshot."""
+    c = _client()
+    chemin = guard.snapshot(c, "card", [1, 2, 3], dossier=str(tmp_path))
+    c._http.calls.clear()
+    assert guard.restore(c, chemin, ids=[]) == []
+    assert not any(x[0] == "PUT" for x in c._http.calls), "aucune écriture ne doit partir"
+
+
+def test_restore_sans_ids_restaure_tout(tmp_path):
+    c = _client()
+    chemin = guard.snapshot(c, "card", [1, 2, 3], dossier=str(tmp_path))
+    c._http.calls.clear()
+    assert sorted(guard.restore(c, chemin)) == [1, 2, 3]
+
+
+def test_restore_verifie_la_relecture(tmp_path):
+    """restore faisait un http.put nu, sans relecture : une restauration
+    partiellement rejetée était rapportée comme réussie."""
+    c = _client()
+    chemin = guard.snapshot(c, "card", [1], dossier=str(tmp_path))
+    # la relecture rend autre chose que ce qui a été restauré
+    c._http.routes[("GET", "/api/card/1?legacy-mbql=true")] = FakeResponse(
+        200, {"id": 1, "name": "AUTRE CHOSE"})
+    with pytest.raises(ValueError, match="champ 'name'"):
+        guard.restore(c, chemin)
+
+
+def test_un_echec_dans_le_lot_ne_finit_pas_sur_un_ok(tmp_path):
+    """Le retour de _appliquer était ignoré pour la phase lot : le rapport se
+    terminait sur une ligne ok et ne donnait pas la commande de rollback."""
+    c = _client(n=6)
+
+    def muter(cl, i):
+        if i == 5:
+            raise RuntimeError("boom")
+
+    rap = guard.batch(c, [1, 2, 3, 4, 5, 6], muter=muter, dry_run=False,
+                      echantillon=2, dossier=str(tmp_path))
+    assert not rap.ok()
+    dernier = rap.findings[-1]
+    assert dernier.level == "error", "le rapport ne doit pas finir sur un ok"
+    assert "guard.restore" in dernier.message
+
+
+def test_le_dossier_par_defaut_ne_depend_pas_du_cwd():
+    """_DOSSIER_DEFAUT était relatif : un script lancé depuis scripts/ écrivait
+    ses snapshots dans scripts/migration/, invisible pour l'opérateur."""
+    import pathlib as _pl
+    assert _pl.Path(guard._DOSSIER_DEFAUT).is_absolute()
+    assert _pl.Path(guard._DOSSIER_DEFAUT).name == "migration"

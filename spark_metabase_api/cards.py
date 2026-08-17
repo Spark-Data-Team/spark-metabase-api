@@ -74,11 +74,12 @@ def put_card(client, card_id: int, payload: Dict[str, Any],
 
 
 def _sql_of_payload(payload: Dict[str, Any]) -> Optional[str]:
-    dq = payload.get("dataset_query") or {}
-    native = dq.get("native")
-    if isinstance(native, dict):
-        return native.get("query")
-    return None
+    """Même lecture que card_sql, donc les deux formes.
+
+    En ne lisant que la forme legacy, cette fonction rendait None pour un
+    payload MBQL5, ce qui SAUTAIT silencieusement la vérification de put_card
+    alors que sa docstring promet l'inverse."""
+    return card_sql(payload)
 
 
 def card_values(client, card_id: int):

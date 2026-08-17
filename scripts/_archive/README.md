@@ -10,9 +10,13 @@ dont la valeur de retour ment. Pour écrire un nouveau script, partir de
 
 Vérifié avant déplacement : aucun script actif ni aucun test n'en importe un.
 
-Ils restent exécutables si besoin (ils sont dans un seul dossier plat, donc
-les imports entre eux fonctionnent toujours), mais rien du travail courant n'en
-dépend.
+Leurs imports mutuels fonctionnent toujours (dossier plat), mais **ils ne sont
+plus exécutables tels quels** : chacun calcule la racine du dépôt par
+`Path(__file__).resolve().parent.parent`, qui pointe désormais sur `scripts/`.
+Concrètement ils chercheraient `scripts/.env` et écriraient dans
+`scripts/migration/`. Pour en relancer un, il faut passer à `parent.parent.parent`.
+
+Rien du travail courant n'en dépend.
 
 Campagnes concernées : SEO manucurist, Quiz Room, correction brand, anti-patterns
 SQL, réorganisation de la collection 215, HubSpot Comptastar 28899.

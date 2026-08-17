@@ -67,6 +67,13 @@ def _signature(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Empreinte d'un jeu de lignes : nombre de lignes, colonnes, sommes des
     colonnes numériques. Une colonne n'est numérique que si toutes ses valeurs
     non nulles sont int/float et pas bool."""
+    if rows and not isinstance(rows[0], dict):
+        raise TypeError(
+            "check_differential attend une liste de dicts (une ligne = un dict "
+            "colonne -> valeur), pas {}. Pour la forme `data.rows` de "
+            "/api/dataset (liste de listes), zippe d'abord avec data.cols. "
+            "Pour comparer des scalaires, utiliser check_values.".format(
+                type(rows[0]).__name__))
     cols = list(rows[0].keys()) if rows else []
     sums: Dict[str, float] = {}
     for c in cols:
