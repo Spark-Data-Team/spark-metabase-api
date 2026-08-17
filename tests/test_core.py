@@ -187,3 +187,46 @@ def test_put_dashboard_accepte_une_modification_voulue_des_onglets():
 
     res = dashboards.put_dashboard(c, 9, {"tabs": [{"id": 1}]})
     assert len(res["tabs"]) == 1
+
+
+# --- Passe adversariale (2026-08-17) : trous laissés ouverts ---
+
+def test_put_dashboard_detecte_une_tuile_rejetee_en_silence():
+    """Cas d'usage principal du module : recâbler des dashcards. Metabase peut
+    accepter le PUT et n'en retenir qu'une partie."""
+    avant = {"name": "d", "tabs": [], "parameters": [], "dashcards": [{"id": 1}, {"id": 2}]}
+    apres = {"name": "d", "tabs": [], "parameters": [], "dashcards": [{"id": 1}]}
+    c = FakeClient({("PUT", "/api/dashboard/9"): FakeResponse(200, {})})
+    c._http.routes[("GET", "/api/dashboard/9")] = lambda n: FakeResponse(
+        200, avant if n == 1 else apres)
+
+    with pytest.raises(ValueError, match="rejeté 1 en silence"):
+        dashboards.put_dashboard(c, 9, {"dashcards": [{"id": 1}, {"id": 3}]})
+
+
+def test_put_card_verifie_aussi_une_carte_mbql_structuree():
+    """card_sql rend None sur une requête MBQL sans SQL, donc la vérification
+    était entièrement sautée pour les cartes majoritaires de la migration."""
+    ecrit = {"dataset_query": {"type": "query", "database": 2,
+                               "query": {"source-table": 123, "aggregation": [["count"]]}}}
+    relu = {"dataset_query": {"type": "query", "database": 2,
+                              "query": {"source-table": 999, "aggregation": [["count"]]}}}
+    c = FakeClient({
+        ("PUT", "/api/card/7"): FakeResponse(200, {}),
+        ("GET", "/api/card/7?legacy-mbql=true"): FakeResponse(200, relu),
+    })
+    with pytest.raises(ValueError, match="source-table"):
+        cards.put_card(c, 7, ecrit)
+
+
+def test_put_card_mbql_tolere_l_enrichissement_de_metabase():
+    """Metabase normalise et ajoute des clés : on compare ce que l'appelant a
+    voulu poser, pas le dict entier."""
+    ecrit = {"dataset_query": {"type": "query", "query": {"source-table": 123}}}
+    relu = {"dataset_query": {"type": "query",
+                              "query": {"source-table": 123, "lib/uuid": "abc"}}}
+    c = FakeClient({
+        ("PUT", "/api/card/7"): FakeResponse(200, {}),
+        ("GET", "/api/card/7?legacy-mbql=true"): FakeResponse(200, relu),
+    })
+    assert cards.put_card(c, 7, ecrit)

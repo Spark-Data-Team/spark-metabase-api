@@ -38,6 +38,25 @@ _DOSSIER_DEFAUT = str(_RACINE / "migration")
 
 _KINDS = ("card", "dashboard", "collection")
 
+# Un GET rend bien plus que ce qu'on peut réécrire : `updated_at`, `view_count`,
+# `last-edit-info`, `can_write`... Metabase les rafraîchit mécaniquement à chaque
+# PUT. Les renvoyer tels quels faisait échouer la vérification de relecture sur
+# un champ que personne ne contrôle, donc rendait tout rollback impossible.
+_CHAMPS_RESTAURABLES = {
+    "card": ("name", "description", "collection_id", "collection_position", "archived",
+             "dataset_query", "display", "visualization_settings", "result_metadata",
+             "parameters", "type", "cache_ttl"),
+    "dashboard": ("name", "description", "collection_id", "collection_position", "archived",
+                  "tabs", "parameters", "dashcards", "cache_ttl", "auto_apply_filters", "width"),
+    "collection": ("name", "description", "parent_id", "archived", "authority_level"),
+}
+
+
+def _restaurable(kind: str, objet: dict) -> dict:
+    """Ne garde du snapshot que ce qui est réellement réinscriptible."""
+    champs = _CHAMPS_RESTAURABLES[kind]
+    return {k: v for k, v in objet.items() if k in champs}
+
 
 def _horodatage() -> str:
     # Microsecondes, pas secondes : deux snapshots lancés dans la même seconde
@@ -93,12 +112,13 @@ def restore(client, chemin: str, ids: Optional[List[int]] = None) -> List[int]:
         objet = etat.get(i)
         if objet is None:
             raise ValueError("id {} absent du snapshot {}".format(i, chemin))
+        payload = _restaurable(kind, objet)
         if kind == "card":
-            _cards.put_card(client, int(i), objet)
+            _cards.put_card(client, int(i), payload)
         elif kind == "dashboard":
-            _dashboards.put_dashboard(client, int(i), objet)
+            _dashboards.put_dashboard(client, int(i), payload)
         else:
-            http.put(client, "/api/collection/{}".format(i), json=objet)
+            http.put(client, "/api/collection/{}".format(i), json=payload)
         faits.append(int(i))
     return faits
 
@@ -174,6 +194,13 @@ def _appliquer(client, ids, muter, mesurer, mode, tolerance, rapport, phase):
             rapport.add(Finding(cible, "mutation", "ok", "modifié"))
             continue
         apres = mesurer(client, i)
+        if not avant and not apres:
+            # Mesure vide des deux côtés : le différentiel dirait "ok" sans rien
+            # avoir comparé. Une carte à colonnes uniquement textuelles, ou une
+            # carte cassée qui rend zéro ligne, donnent exactement ça.
+            rapport.add(Finding(cible, "mesure", "warn",
+                "mesure vide avant ET après : le différentiel ne prouve rien ici. "
+                "Vérifier cette carte à la main."))
         ecarts = check_values(cible, avant, apres, mode=mode, tolerance=tolerance)
         for f in ecarts:
             rapport.add(f)

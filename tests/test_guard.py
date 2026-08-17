@@ -183,3 +183,43 @@ def test_le_dossier_par_defaut_ne_depend_pas_du_cwd():
     import pathlib as _pl
     assert _pl.Path(guard._DOSSIER_DEFAUT).is_absolute()
     assert _pl.Path(guard._DOSSIER_DEFAUT).name == "migration"
+
+
+# --- Passe adversariale (2026-08-17) : refutation des corrections ---
+
+def test_restore_d_un_dashboard_ne_bute_pas_sur_les_champs_volatils(tmp_path):
+    """La correction précédente passait l'objet COMPLET du snapshot à
+    put_dashboard, qui compare chaque champ relu. updated_at et view_count sont
+    rafraîchis par Metabase à chaque PUT, donc le rollback échouait TOUJOURS,
+    et sur un snapshot de N dashboards il s'arrêtait après le premier."""
+    complet = {"id": 7, "name": "D", "tabs": [], "parameters": [], "dashcards": [],
+               "updated_at": "T1", "view_count": 10, "can_write": True,
+               "last-edit-info": {"timestamp": "T1"}}
+    apres_put = dict(complet, updated_at="T4", view_count=11)
+    c = FakeClient({("PUT", "/api/dashboard/7"): FakeResponse(200, {})})
+    appels = {"n": 0}
+
+    def get_dash(n):
+        appels["n"] += 1
+        return FakeResponse(200, complet if appels["n"] <= 2 else apres_put)
+
+    c._http.routes[("GET", "/api/dashboard/7")] = get_dash
+    chemin = guard.snapshot(c, "dashboard", [7], dossier=str(tmp_path))
+    assert guard.restore(c, chemin) == [7]
+
+    envoye = [x for x in c._http.calls if x[0] == "PUT"][0][2]
+    assert "updated_at" not in envoye, "un champ en lecture seule ne doit pas être renvoyé"
+    assert "view_count" not in envoye
+    assert "can_write" not in envoye
+    assert envoye["name"] == "D", "les champs réinscriptibles doivent l'être"
+
+
+def test_une_mesure_vide_des_deux_cotes_est_signalee(tmp_path):
+    """Une carte à colonnes uniquement textuelles mesure [] avant et après, donc
+    check_values dit 'ok' sans rien avoir comparé."""
+    c = _client(n=2)
+    rap = guard.batch(c, [1, 2], muter=lambda cl, i: None, mesurer=lambda cl, i: [],
+                      mode="identical", dry_run=False, dossier=str(tmp_path))
+    avertissements = [f for f in rap.findings if f.check == "mesure" and f.level == "warn"]
+    assert len(avertissements) == 2
+    assert "ne prouve rien" in avertissements[0].message

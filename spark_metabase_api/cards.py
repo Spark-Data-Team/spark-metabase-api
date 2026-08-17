@@ -61,16 +61,43 @@ def put_card(client, card_id: int, payload: Dict[str, Any],
     after = get_card(client, card_id)
     if "dataset_query" in payload:
         wanted = _sql_of_payload(payload)
-        if wanted is not None and card_sql(after) != wanted:
-            raise ValueError(
-                "carte {} : le SQL relu ne correspond pas à celui écrit. "
-                "L'écriture a été acceptée mais n'a pas atterri.".format(card_id))
+        if wanted is not None:
+            if card_sql(after) != wanted:
+                raise ValueError(
+                    "carte {} : le SQL relu ne correspond pas à celui écrit. "
+                    "L'écriture a été acceptée mais n'a pas atterri.".format(card_id))
+        else:
+            # Carte MBQL structurée (source-table, aggregation, breakout) : pas
+            # de SQL à comparer. Sans ce contrôle, la vérification était
+            # entièrement sautée pour les cartes majoritaires de la migration.
+            _verifier_mbql(card_id, payload["dataset_query"], after.get("dataset_query") or {})
     for champ in ("name", "description", "display", "collection_id", "archived"):
         if champ in payload and after.get(champ) != payload[champ]:
             raise ValueError(
                 "carte {} : champ '{}' relu à {!r}, attendu {!r}".format(
                     card_id, champ, after.get(champ), payload[champ]))
     return after
+
+
+def _verifier_mbql(card_id: int, ecrit: Dict[str, Any], relu: Dict[str, Any]) -> None:
+    """Compare les clés structurantes d'une requête MBQL après écriture.
+
+    On ne compare pas les dicts entiers : Metabase normalise et enrichit
+    (métadonnées de colonnes, idents). On compare ce que l'appelant a voulu
+    poser, clé par clé, en tolérant qu'il en ajoute."""
+    q_ecrit = ecrit.get("query") or {}
+    q_relu = relu.get("query") or {}
+    if not q_ecrit:
+        return
+    for cle in ("source-table", "aggregation", "breakout", "filter", "expressions", "joins"):
+        if cle not in q_ecrit:
+            continue
+        if q_relu.get(cle) != q_ecrit[cle]:
+            raise ValueError(
+                "carte {} : requête MBQL relue différente sur '{}'. "
+                "L'écriture a été acceptée mais n'a pas atterri.\n"
+                "  écrit : {!r}\n  relu  : {!r}".format(
+                    card_id, cle, q_ecrit[cle], q_relu.get(cle)))
 
 
 def _sql_of_payload(payload: Dict[str, Any]) -> Optional[str]:

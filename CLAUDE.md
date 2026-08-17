@@ -81,6 +81,14 @@ diff.check_values("carte 32496", avant, apres, mode="identical")
 quand une migration les change exprès. C'est la seule brique du dépôt qu'aucune
 fonctionnalité native de Metabase ne remplace.
 
+**Ses deux angles morts, à connaître.** `check_values` compare un multiset trié,
+donc il ne voit pas une permutation : `{lead: 10, achat: 3}` devenu
+`{lead: 3, achat: 10}` donne `[3, 10]` des deux côtés et passe pour « ok ». C'est
+exactement l'erreur que risque une migration de slots de conversion. Et une carte
+sans colonne numérique mesure `[]` avant comme après, donc le différentiel ne prouve
+rien ; `guard.batch` t'avertit dans ce cas. Dans ces deux situations, compare les
+colonnes nommées à la main.
+
 ## Ce qui est natif et ne doit pas être réécrit
 
 | Besoin | À utiliser |

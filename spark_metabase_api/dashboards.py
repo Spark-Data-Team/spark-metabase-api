@@ -52,13 +52,30 @@ def put_dashboard(client, dashboard_id: int, changes: Dict[str, Any],
     apres = get_dashboard(client, dashboard_id)
     _verifier_rien_de_perdu(dashboard_id, avant, apres, changes)
     for champ, attendu in changes.items():
-        if champ in ("tabs", "parameters", "dashcards"):
+        if champ in _CHAMPS_A_PRESERVER:
+            # Cas d'usage principal du module : recâbler des tuiles ou des
+            # filtres. Metabase peut accepter le PUT et n'en retenir qu'une
+            # partie (une dashcard dont le card_id est mort est ignorée en
+            # silence). On ne peut pas comparer les objets, qu'il enrichit,
+            # mais le compte doit correspondre.
+            _verifier_compte(dashboard_id, champ, attendu, apres.get(champ))
             continue
         if apres.get(champ) != attendu:
             raise ValueError(
                 "dashboard {} : champ '{}' relu à {!r}, attendu {!r}".format(
                     dashboard_id, champ, apres.get(champ), attendu))
     return apres
+
+
+def _verifier_compte(dashboard_id, champ, attendu, obtenu) -> None:
+    if not isinstance(attendu, list):
+        return
+    n_attendu, n_obtenu = len(attendu), len(obtenu or [])
+    if n_obtenu != n_attendu:
+        raise ValueError(
+            "dashboard {} : '{}' envoyé avec {} éléments, relu avec {}. "
+            "Metabase en a rejeté {} en silence.".format(
+                dashboard_id, champ, n_attendu, n_obtenu, abs(n_attendu - n_obtenu)))
 
 
 def _verifier_rien_de_perdu(dashboard_id, avant, apres, changes) -> None:
