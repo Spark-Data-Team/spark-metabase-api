@@ -94,8 +94,8 @@ class Metabase_API:
         self.session_id = res.json()["id"]
         self.header = {"X-Metabase-Session": self.session_id}
 
-        # Print session ID to the user
-        print(f"Authenticated successfully. Your session ID is: {self.session_id}")
+        # Le jeton n'est JAMAIS imprimé : 6 redirect_stdout dans le dépôt
+        # n'existaient que pour masquer cette ligne.
 
 
     def validate_session(self):
@@ -129,7 +129,6 @@ class Metabase_API:
     ###################### Custom Functions ##########################
     ##################################################################
     from .create_methods import create_card, create_collection, create_segment
-    from .copy_methods import copy_card, copy_collection, copy_dashboard
     from .modify_methods import restrict_collection_access, restrict_filter_with_card_values
 
     def search(self, q, item_type=None, archived=False):
@@ -234,155 +233,6 @@ class Metabase_API:
         except Exception:
             return {"status": "failed", "error": "non-JSON response ({})".format(
                 getattr(res, "status_code", "?"))}
-
-    def clone_card(
-        self,
-        card_id,
-        source_table_id=None,
-        target_table_id=None,
-        source_table_name=None,
-        target_table_name=None,
-        new_card_name=None,
-        new_card_collection_id=None,
-        ignore_these_filters=None,
-        return_card=False,
-    ):
-        """
-        *** work in progress ***
-        Create a new card where the source of the old card is changed from 'source_table_id' to 'target_table_id'.
-        The filters that were based on the old table would become based on the new table.
-        In the current version of the function there are some limitations which would be removed in future versions:
-            - The column names used in filters need to be the same in the source and target table (except the ones that are ignored by 'ignore_these_filters' param).
-            - The source and target tables need to be in the same DB.
-
-        Keyword arguments:
-        card_id -- id of the card
-        source_table_id -- The table that the filters of the card are based on
-        target_table_id -- The table that the filters of the cloned card would be based on
-        new_card_name -- Name of the cloned card. If not provided, the name of the source card is used.
-        new_card_collection_id -- The id of the collection that the cloned card should be saved in
-        ignore_these_filters -- A list of variable names of filters. The source of these filters would not change in the cloning process.
-        return_card -- Whether to return the info of the created card (default False)
-        """
-        # Make sure we have the data we need
-        if not source_table_id:
-            if not source_table_name:
-                raise ValueError(
-                    "Either the name or id of the source table needs to be provided."
-                )
-            else:
-                source_table_id = self.get_item_id("table", source_table_name)
-
-        if not target_table_id:
-            if not target_table_name:
-                raise ValueError(
-                    "Either the name or id of the target table needs to be provided."
-                )
-            else:
-                target_table_id = self.get_item_id("table", target_table_name)
-
-        if ignore_these_filters:
-            assert type(ignore_these_filters) == list
-
-        # Fetch the card info. Force MBQL 4 on Metabase 0.57+ so we keep the
-        # 'field-id'/'field' shapes this method understands.
-        card_info = self.get(
-            "/api/card/{}".format(card_id),
-            params={"legacy-mbql": "true"},
-        )
-        if not card_info:
-            raise ValueError('There is no card with the id "{}"'.format(card_id))
-
-        dataset_query = card_info.get("dataset_query") or {}
-        query_type = dataset_query.get("type")
-        if query_type not in ("native", "query"):
-            raise ValueError(
-                "Card {} has no usable dataset_query (type={!r}); "
-                "clone_card only supports native and MBQL queries."
-                .format(card_id, query_type)
-            )
-
-        # get the mappings, both name -> id and id -> name
-        target_table_col_name_id_mapping = self.get_columns_name_id(
-            table_id=target_table_id
-        )
-        source_table_col_id_name_mapping = self.get_columns_name_id(
-            table_id=source_table_id, column_id_name=True
-        )
-
-        # native questions
-        if query_type == "native":
-            filters_data = card_info["dataset_query"]["native"]["template-tags"]
-            # change the underlying table for the card
-            if not source_table_name:
-                source_table_name = self.get_item_name("table", source_table_id)
-            if not target_table_name:
-                target_table_name = self.get_item_name("table", target_table_id)
-            card_info["dataset_query"]["native"]["query"] = card_info["dataset_query"][
-                "native"
-            ]["query"].replace(source_table_name, target_table_name)
-            # change filters source
-            for filter_variable_name, data in filters_data.items():
-                if (
-                    ignore_these_filters is not None
-                    and filter_variable_name in ignore_these_filters
-                ):
-                    continue
-                column_id = data["dimension"][1]
-                column_name = source_table_col_id_name_mapping[column_id]
-                target_col_id = target_table_col_name_id_mapping[column_name]
-                card_info["dataset_query"]["native"]["template-tags"][
-                    filter_variable_name
-                ]["dimension"][1] = target_col_id
-
-        # simple/custom questions
-        elif query_type == "query":
-            query_data = card_info["dataset_query"]["query"]
-
-            # change the underlying table for the card
-            query_data["source-table"] = target_table_id
-
-            # walk the MBQL tree and remap column ids in-place; safer than
-            # round-tripping through repr/eval which breaks on quotes/unicode.
-            def _remap_field_ids(node):
-                if isinstance(node, list):
-                    if (
-                        len(node) >= 2
-                        and node[0] in ("field", "field-id")
-                        and isinstance(node[1], int)
-                    ):
-                        col_name = source_table_col_id_name_mapping.get(node[1])
-                        if col_name in target_table_col_name_id_mapping:
-                            node[1] = target_table_col_name_id_mapping[col_name]
-                    for item in node:
-                        _remap_field_ids(item)
-                elif isinstance(node, dict):
-                    for value in node.values():
-                        _remap_field_ids(value)
-
-            _remap_field_ids(query_data)
-            card_info["dataset_query"]["query"] = query_data
-
-        new_card_json = {}
-        for key in ["dataset_query", "display", "visualization_settings"]:
-            new_card_json[key] = card_info[key]
-
-        if new_card_name:
-            new_card_json["name"] = new_card_name
-        else:
-            new_card_json["name"] = card_info["name"]
-
-        if new_card_collection_id:
-            new_card_json["collection_id"] = new_card_collection_id
-        else:
-            new_card_json["collection_id"] = card_info["collection_id"]
-
-        if return_card:
-            return self.create_card(
-                custom_json=new_card_json, verbose=True, return_card=return_card
-            )
-        else:
-            self.create_card(custom_json=new_card_json, verbose=True)
 
     def move_to_archive(
         self,

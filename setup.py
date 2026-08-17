@@ -16,16 +16,8 @@ setuptools.setup(
     install_requires=[
         "requests",
     ],
-    extras_require={
-        "iac": ["PyYAML>=5.1"],
-        "chatbot": ["anthropic>=0.40.0"],
-        "streamlit": ["streamlit>=1.30", "PyYAML>=5.1", "anthropic>=0.40.0"],
-    },
-    entry_points={
-        "console_scripts": [
-            "spark-metabase=spark_metabase_api.iac:main",
-        ],
-    },
+    # Outil interne : plus de publication PyPI, plus d'extras IaC/chatbot/Streamlit.
+    # Installation attendue : pip install -e .
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
