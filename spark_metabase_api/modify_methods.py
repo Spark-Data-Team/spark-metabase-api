@@ -3,7 +3,7 @@ def restrict_collection_access(
     self,
     collection_id=None,
     collection_name=None,
-    authorized_group_ids=[],
+    authorized_group_ids=None,
     verbose=False
 ):
     """
@@ -17,6 +17,14 @@ def restrict_collection_access(
     verbose -- prints extra information (default False) 
     """
     
+    # Une liste vide veut dire "aucun groupe autorisé", donc verrouiller la
+    # collection pour TOUT LE MONDE. C'était le défaut de la fonction : un appel
+    # sans argument coupait l'accès à tous. Il faut désormais le demander.
+    if authorized_group_ids is None:
+        raise ValueError(
+            "authorized_group_ids est obligatoire. Passer explicitement [] pour "
+            "verrouiller la collection à tous les groupes.")
+
     # Making sure we have the data we need
     if not collection_id:
         if not collection_name:
@@ -108,8 +116,19 @@ def restrict_filter_with_card_values(
                 ],
             }
 
-    if not filter_found and verbose:
-        self.verbose_print(verbose, 'No filter found with the name "{}".'.format(filter_name))
+    # Le garde-fou était branché sur `verbose` : en mode par défaut, un filtre
+    # introuvable tombait dans le `else` et le PUT partait quand même, écrasant
+    # l'objet avec un contenu inchangé.
+    if not filter_found:
+        raise ValueError(
+            'Aucun filtre nommé "{}" sur {} {}. Rien n\'a été écrit.'.format(
+                filter_name, item_type, item_id))
+
+    self.verbose_print(verbose, 'Modify filter "{}" ...'.format(filter_name))
+    if item_type == 'dashboard':
+        # Passe par put_dashboard, qui réinjecte tabs et parameters.
+        from .dashboards import put_dashboard
+        put_dashboard(self, item_id, {"parameters": item["parameters"]})
     else:
-        self.verbose_print(verbose, 'Modify filter "{}" ...'.format(filter_name))
-        self.put('/api/{}/{}'.format(item_type, item_id), json=item)
+        from . import http
+        http.put(self, '/api/card/{}'.format(item_id), json=item)
