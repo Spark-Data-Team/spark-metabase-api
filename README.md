@@ -51,7 +51,7 @@ migration les change volontairement.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest -q     # 504 tests, hors-ligne, moins d'une seconde
+.venv/bin/python -m pytest -q     # 512 tests, hors-ligne, moins d'une seconde
 ```
 
 La suite ne touche pas le réseau. Rien ne part en production sans qu'elle soit
@@ -61,7 +61,7 @@ au vert.
 
 | Chemin | Contenu |
 |---|---|
-| `spark_metabase_api/` | le noyau : `connect`, `http`, `cards`, `dashboards`, `deps`, `diff` |
+| `spark_metabase_api/` | le noyau : `connect`, `http`, `cards`, `dashboards`, `deps`, `diff`, `guard` |
 | `scripts/` | campagnes en cours |
 | `scripts/_archive/` | campagnes closes, conservées pour la trace |
 | `docs/superpowers/` | specs et plans |

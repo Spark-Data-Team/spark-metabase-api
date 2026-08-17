@@ -49,15 +49,20 @@ Le client peut se ré-authentifier en vol et remplacer son header. Ne le partage
 entre threads. Un script du dépôt fait tourner 5 pools de 8 threads sur un client
 partagé : c'est un bug, pas un modèle à copier.
 
-**6. Toute écriture de masse : snapshot, puis échantillon, puis lot.**
-Sauvegarde l'état complet sur disque avant de toucher quoi que ce soit, applique sur
-2 ou 3 objets, vérifie le différentiel, et seulement ensuite lance le lot. Le rollback
-n'existe que si tu l'as écrit avant.
+**6. Toute écriture de masse passe par `guard.batch`.**
+Il impose l'ordre : snapshot sur disque, échantillon de 3, différentiel, puis le reste.
+Si l'échantillon échoue, les objets restants ne sont pas touchés et le rapport te donne
+la commande de rollback. Il est en `dry_run=True` par défaut.
+
+```python
+guard.batch(mb, ids, muter=..., mesurer=cards.card_values, mode="identical", dry_run=False)
+guard.restore(mb, "migration/snapshot-card-42.json")   # rollback
+```
 
 ## Vérifier son travail
 
 ```bash
-.venv/bin/python -m pytest -q        # 504 tests, hors-ligne, < 1 s
+.venv/bin/python -m pytest -q        # 512 tests, hors-ligne, < 1 s
 ```
 
 Aucune modification ne part sans cette suite au vert. Elle ne touche pas le réseau,

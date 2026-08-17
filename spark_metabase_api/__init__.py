@@ -12,7 +12,7 @@ Les écritures lèvent en cas d'échec. Ne jamais tester `if mb.put(...)` :
 l'ancienne façade rend un status_code, donc 500 est truthy.
 """
 
-from . import cards, dashboards, deps, diff, http
+from . import cards, dashboards, deps, diff, guard, http
 from .http import MetabaseError
 from .main_methods import Metabase_API
 from .session import connect, load_env
@@ -26,5 +26,6 @@ __all__ = [
     "dashboards",
     "deps",
     "diff",
+    "guard",
     "http",
 ]
