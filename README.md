@@ -1,178 +1,80 @@
-[![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-yellow.svg)](https://opensource.org/licenses/)
-
 # Spark Metabase API
 
-A Python wrapper for the Metabase API, developed by the [Spark Tech team](https://www.spark.do/) ⭐️
+Outil interne de l'équipe Tech [Spark](https://www.spark.do/) pour manipuler
+notre instance Metabase. Ce n'est plus un paquet publié : il pilote une
+production utilisée par 71 clients.
+
+**Si tu es un agent, lis [`CLAUDE.md`](CLAUDE.md) avant d'écrire quoi que ce soit.**
 
 ## Installation
 
 ```bash
-pip install spark-metabase-api
-# Optional YAML support for the Infrastructure-as-Code module:
-pip install "spark-metabase-api[iac]"
+python -m venv .venv && .venv/bin/pip install -e .
+cp .env.example .env   # puis renseigner METABASE_DOMAIN + SESSION_ID ou EMAIL/PASSWORD
 ```
 
-## Quick start
+## Usage
 
 ```python
-from spark_metabase_api import Metabase_API
+from spark_metabase_api import connect, cards, dashboards, deps, diff
 
-mb = Metabase_API(
-    domain="https://metabase.example.com",
-    email="me@example.com",
-    password="hunter2",
-)
+mb = connect()                                  # point d'entrée unique, lit le .env
 
-mb.copy_dashboard(source_dashboard_id=42, destination_collection_name="Acme")
+carte = cards.get_card(mb, 32496)               # forme legacy garantie
+cards.card_sql(carte)                           # le SQL, quelle que soit la forme reçue
+cards.put_card(mb, 32496, {"name": "..."})      # écrit, relit, lève si ça n'a pas atterri
+
+dashboards.put_dashboard(mb, 11917, {...})      # réinjecte tabs + parameters
+
+deps.tables_of(mb, 32496)                       # tables réellement lues (graphe natif)
+deps.broken(mb, 32496)                          # dépendances cassées
 ```
 
-## Infrastructure-as-Code
+Les écritures lèvent `MetabaseError` en cas d'échec.
 
-Define a Metabase collection tree in YAML, version it in git, and apply it
-idempotently with a Terraform-style diff.
+## Différentiel avant/après
 
-```bash
-# Pull the live state for an existing collection
-spark-metabase --domain "$MB_URL" --email "$MB_USER" --password "$MB_PASS" \
-    export "Acme Customer" specs/acme.yaml
-
-# Show what would change after editing the spec
-spark-metabase plan specs/acme.yaml
-
-# Apply (with confirmation prompt unless --yes)
-spark-metabase apply specs/acme.yaml
-```
-
-Example spec:
-
-```yaml
-name: "Acme Customer"
-description: "Customer-facing dashboards"
-authority_level: official
-collections:
-  - name: "Questions"
-    cards:
-      - name: "Daily revenue"
-        definition:
-          dataset_query:
-            type: native
-            database: 2
-            native:
-              query: "SELECT day, sum(amount) FROM sales GROUP BY 1"
-          display: line
-          visualization_settings: {}
-dashboards:
-  - name: "Acme Dashboard"
-    description: "Top-level KPIs"
-    parameters: []
-    dashcards: []  # populated automatically by `export`
-```
-
-The Python API is also exposed:
+La brique que rien ne remplace côté Metabase : ni l'API EE, ni le CLI `mb`.
+À utiliser autour de toute modification de masse.
 
 ```python
-from spark_metabase_api import Metabase_API, iac
+avant = cards.card_values(mb, card_id)
+# ... mutation ...
+apres = cards.card_values(mb, card_id)
 
-mb = Metabase_API(domain=..., session_id=...)
-
-# Export to YAML
-spec = iac.export(mb, "Acme Customer")
-iac.dump(spec, "specs/acme.yaml")
-
-# Edit the file in git, then in CI:
-spec = iac.load("specs/acme.yaml")
-print(iac.plan(mb, spec).render())
-iac.apply(mb, spec)
+diff.check_values("carte 32496", avant, apres, mode="identical")
 ```
 
-### Natural keys & renames
+`identical` quand un refacto doit préserver les nombres, `monitor` quand une
+migration les change volontairement.
 
-Items are identified by `(parent_path, kind, name)` within the spec. Renaming
-an item is therefore a destructive change (delete + create). To bind a spec
-entry to a specific live item across renames, set `entity_id` (Metabase's
-stable nanoid, available since v0.46) on the entry.
-
-### Forward references in dashcards
-
-A dashcard can reference a card created by the same spec via
-`card_name: "<name>"` instead of `card_id`. The applier looks the name up in
-the cards present (or just created) inside the same collection and rewrites
-the dashcard with the real id.
-
-## Natural-language dashboard authoring
+## Tests
 
 ```bash
-pip install "spark-metabase-api[chatbot]"
+.venv/bin/python -m pytest -q     # 504 tests, hors-ligne, moins d'une seconde
 ```
 
-Describe what you want; Claude inspects the live Metabase via read-only tools
-(`list_databases`, `list_tables`, `describe_table`, `search_metabase`,
-`find_cards_using_table`) and emits a `CollectionSpec`:
+La suite ne touche pas le réseau. Rien ne part en production sans qu'elle soit
+au vert.
 
-```python
-from spark_metabase_api import Metabase_API, iac
-from spark_metabase_api.chatbot import chat
+## Structure
 
-mb = Metabase_API(domain=..., session_id=...)
-spec = chat(mb, "Build an Acme dashboard with monthly revenue and top accounts")
-print(iac.plan(mb, spec).render())
-iac.apply(mb, spec)
-```
+| Chemin | Contenu |
+|---|---|
+| `spark_metabase_api/` | le noyau : `connect`, `http`, `cards`, `dashboards`, `deps`, `diff` |
+| `scripts/` | campagnes en cours |
+| `scripts/_archive/` | campagnes closes, conservées pour la trace |
+| `docs/superpowers/` | specs et plans |
+| `migration/` | snapshots et rollbacks d'exécution, gitignorés sauf les décisions humaines |
 
-For UIs (Streamlit, Slack, etc.) use the streaming generator:
+## Ce qu'on laisse à Metabase
 
-```python
-from spark_metabase_api.chatbot import stream
+Le graphe de dépendances, le contenu obsolète, les collections officielles et
+les cartes vérifiées sont natifs. Ne pas les réimplémenter. Détail dans
+[`docs/superpowers/specs/2026-08-17-repo-simplification-design.md`](docs/superpowers/specs/2026-08-17-repo-simplification-design.md).
 
-for event_type, payload in stream(mb, "..."):
-    if event_type == "text":          render_assistant_text(payload)
-    elif event_type == "tool_call":   render_tool_call(payload)      # {name, input}
-    elif event_type == "tool_result": render_tool_result(payload)    # {name, input, result}
-    elif event_type == "proposed":    save_spec(payload)             # CollectionSpec dict
-```
+## Remerciements
 
-Powered by Claude Opus 4.7 with adaptive thinking; the model needs an
-`ANTHROPIC_API_KEY` environment variable.
-
-### Streamlit frontend
-
-A single-file Streamlit app that wires the chatbot to a chat UI with live
-tool-call rendering, plan diffing, and an Apply button.
-
-```bash
-pip install "spark-metabase-api[streamlit]"
-streamlit run streamlit_app.py
-```
-
-The app:
-- collects Metabase + Anthropic credentials in the sidebar,
-- streams Claude's progress (text, tool calls, expandable tool results) as
-  the agent works,
-- renders the proposed spec as YAML,
-- previews the diff via `iac.plan` and applies it on demand.
-
-## Integration tests
-
-A standalone script exercises the package against a live Metabase instance,
-in four phases with a sandboxed write area that's archived on exit:
-
-```bash
-python tests/integration_test.py \
-    --domain "$MB_URL" --email "$MB_USER" --password "$MB_PASS" \
-    --collection "My Reports" \
-    --source-dashboard-id 42 \
-    --chatbot
-```
-
-Phase 1 is fully read-only. Phase 2 creates a uniquely-named throwaway
-collection, applies a tiny spec, exercises `add_card_to_dashboard` and
-`copy_dashboard(deepcopy=True)`, then archives the sandbox in a `finally`
-block (use `--keep-sandbox` to keep it around for manual inspection).
-Phase 3 (opt-in via `--chatbot`) runs the Claude agent but does *not*
-apply the spec it proposes.
-
-## Acknowledgements
-
-- [Metabase API documentation](https://www.metabase.com/docs/latest/api-documentation)
-- [Metabase API changelog](https://www.metabase.com/docs/latest/developers-guide/api-changelog)
-- Inspired from [metabase_api_python](https://github.com/vvaezian/metabase_api_python)
+- [Documentation de l'API Metabase](https://www.metabase.com/docs/latest/api-documentation)
+- [Changelog de l'API](https://www.metabase.com/docs/latest/developers-guide/api-changelog)
+- Inspiré de [metabase_api_python](https://github.com/vvaezian/metabase_api_python)
