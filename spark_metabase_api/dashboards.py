@@ -1,15 +1,21 @@
-"""Écriture de dashboards, avec le piège des onglets déjà bouché.
+"""Écriture de dashboards : réinjection défensive et vérification de relecture.
 
-Le piège. Un `PUT /api/dashboard/{id}` sur un dashboard à onglets qui n'inclut
-pas `tabs` renvoie un 500 (contrainte de clé étrangère sur les dashcards, qui
-référencent un onglet que la requête vient d'effacer). Même chose, plus
-insidieux, pour `parameters` : les omettre efface les filtres du dashboard
-sans lever la moindre erreur.
+Historique. Un `PUT /api/dashboard/{id}` omettant `tabs` renvoyait un 500
+(clé étrangère des dashcards vers l'onglet effacé), et omettre `parameters`
+effaçait les filtres en silence. Trois scripts du dépôt contournaient ça à la
+main.
 
-Trois scripts du dépôt portaient ce bug à la main. `put_dashboard()` refait
-toujours GET -> fusion -> réinjection de `tabs` et `parameters` -> écriture ->
-relecture. Le 500 devient impossible à déclencher, et un filtre ne peut plus
-disparaître par omission.
+Mesuré le 2026-08-17 sur Metabase v1.63.13 : **ce n'est plus le cas**. Avec
+2 onglets et une tuile posée sur un onglet, un `PUT {"name": ...}` nu ne lève
+pas et ne perd rien. Metabase préserve les champs omis.
+
+Ce module garde donc son intérêt, mais pas celui qu'on croyait :
+  - la réinjection de `tabs`/`parameters`/`dashcards` est désormais une ceinture
+    de sécurité peu coûteuse, plus un correctif indispensable ;
+  - la vraie valeur est la RELECTURE : vérifier que la modification a atterri,
+    qu'aucun onglet, filtre ou tuile n'a disparu, et que le compte d'éléments
+    envoyés correspond au compte relu (Metabase rejette en silence une dashcard
+    dont le card_id est mort).
 """
 
 from typing import Any, Dict

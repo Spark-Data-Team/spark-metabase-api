@@ -78,6 +78,15 @@ de s'en servir pour décider d'un archivage.
 Le mode `read-only` bloquerait tous nos PUT, donc il tuerait les 4 campagnes actives.
 Chantier post-campagnes, hors périmètre.
 
+**3.4bis — Le piège « PUT dashboard sans tabs » n'existe plus en v1.63.13.**
+
+Testé le 2026-08-17 dans la condition réelle du bug (2 onglets, une tuile posée sur un
+onglet) : un `PUT {"name": ...}` nu ne renvoie pas de 500 et ne perd ni onglet ni tuile.
+Metabase préserve les champs omis d'un PUT partiel. `put_dashboard` reste utile pour sa
+**relecture vérifiée**, pas pour sa réinjection. L'avertissement inverse a été retiré de
+`CLAUDE.md` : une consigne périmée dans les instructions d'un agent est une source
+d'erreur active, exactement le motif qui a fait supprimer trois scripts en vague 2.
+
 **3.5 — Le différentiel avant/après n'a aucun équivalent natif.**
 
 Aucun verbe `diff`, `compare` ou `baseline` dans les 139 commandes du CLI `mb`. Metabase

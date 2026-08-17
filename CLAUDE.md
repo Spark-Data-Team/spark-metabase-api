@@ -33,10 +33,14 @@ avec `type = None`. Il faut `?legacy-mbql=true` pour retrouver `{database, nativ
 Tout le code du dépôt lit `type` et `native`. `get_card` ajoute le paramètre pour toi.
 Pour extraire le SQL quelle que soit la forme reçue : `cards.card_sql(carte)`.
 
-**3. Un PUT dashboard sans `tabs` renvoie un 500.**
-Et omettre `parameters` efface les filtres **sans lever d'erreur**. Passe toujours par
-`dashboards.put_dashboard`, qui relit l'état, réinjecte, écrit, puis vérifie qu'aucun
-onglet, filtre ou tuile n'a disparu.
+**3. Écris un dashboard avec `dashboards.put_dashboard`.**
+Historiquement, un PUT sans `tabs` renvoyait un 500 et omettre `parameters` effaçait les
+filtres. **Testé le 2026-08-17 sur v1.63.13 : ce n'est plus vrai.** Avec 2 onglets et une
+tuile posée sur un onglet, un `PUT {"name": ...}` nu ne lève pas et ne perd rien.
+Passe quand même par `put_dashboard` : sa valeur n'est plus la réinjection, c'est la
+**relecture** qui vérifie que ta modification a atterri et qu'aucun onglet, filtre ou
+tuile n'a disparu. Ne refais pas ce test à chaque montée de version, mais ne réécris pas
+non plus l'ancien avertissement comme s'il était toujours vrai.
 
 **4. Ne te sers pas de `/unreferenced` pour archiver.**
 `backfill-status` vaut `complete: false` sur l'instance. Dans cet état le graphe natif
