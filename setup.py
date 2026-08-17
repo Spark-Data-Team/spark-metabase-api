@@ -15,7 +15,12 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[
         "requests",
+        # scripts/reorg_lib.py, importé en chaîne par 18 fichiers de tests.
+        # Il était déclaré dans l'extra "iac", supprimé avec le bloc IaC : sur
+        # une machine propre les 18 tests ne se collectaient plus.
+        "PyYAML>=5.1",
     ],
+    extras_require={"dev": ["pytest"]},
     # Outil interne : plus de publication PyPI, plus d'extras IaC/chatbot/Streamlit.
     # Installation attendue : pip install -e .
     classifiers=[
