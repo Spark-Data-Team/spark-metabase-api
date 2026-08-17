@@ -7,7 +7,7 @@ avant de lancer la chaîne → toutes ses écritures de registre (generated-card
 tracker) vont dans SON dossier, jamais dans les maîtres. L'agent central merge ensuite les
 shards dans migration/ (additif). => zéro écrasement, registres maîtres pilotés par le central.
 
-Les ENTRÉES (conv-client-mapping.json, conv-targets.json, tu-generic-87/4854.json…) restent
+Les ENTRÉES (conv-supabase-snapshot.json, conv-targets.json, tu-generic-87/4854.json…) restent
 lues dans migration/ : seules les ÉCRITURES sont redirigées.
 """
 import os

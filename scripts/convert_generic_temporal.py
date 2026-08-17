@@ -33,26 +33,45 @@ LATERAL_RE = re.compile(
     # LIMIT 1 is optional (card 87's time_periods LATERAL has no LIMIT 1, others do).
     r"LATERAL\s*\(\s*SELECT\s+(?:[^()]|\([^()]*\))*?FROM\s+metabase_filters\.time_periods(?:[^()]|\([^()]*\))*?\)",
     re.I | re.S)
+TIME_CTE_RE = re.compile(
+    # Variante historique non-LATERAL :
+    #   WITH t AS (SELECT * FROM metabase_filters.time_periods
+    #              WHERE {{time_period}} LIMIT 1), ...
+    # Le nom du CTE est conservé car les CTE aval lisent généralement ``t.name``.
+    r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(\s*SELECT\s+(?:\*|name)\s+"
+    r"FROM\s+metabase_filters\.time_periods\s+WHERE\s+\{\{\s*time_period\s*\}\}"
+    r"\s*(?:LIMIT\s+1\s*)?\)",
+    re.I | re.S,
+)
 GRANS = ["day", "week", "month", "year"]
 
 
 def transform(sql):
     n_lat = len(LATERAL_RE.findall(sql))
-    if n_lat == 0:
-        raise ValueError("aucun LATERAL time_periods")
+    n_cte = len(TIME_CTE_RE.findall(sql))
+    if n_lat + n_cte == 0:
+        raise ValueError("aucun LATERAL/CTE time_periods")
     sql = LATERAL_RE.sub("LATERAL (SELECT name FROM granularity LIMIT 1)", sql)
+    sql = TIME_CTE_RE.sub(
+        lambda match: f"{match.group('name')} AS (SELECT name FROM granularity LIMIT 1)",
+        sql,
+    )
     s = sql.lstrip()
     if s.upper().startswith("WITH"):
         i = sql.upper().find("WITH") + 4
-        return sql[:i] + " " + CTE + sql[i:], n_lat   # CTE finit par ',' -> suivi de la 1ère CTE existante
+        return sql[:i] + " " + CTE + sql[i:], n_lat + n_cte   # CTE finit par ',' -> suivi de la 1ère CTE existante
     # pas de WITH : on en crée un (CTE sans la virgule terminale, suivi du SELECT)
-    return "WITH " + CTE.rstrip().rstrip(",") + "\n" + sql, n_lat
+    return "WITH " + CTE.rstrip().rstrip(",") + "\n" + sql, n_lat + n_cte
 
 
 def inline_baseline_sql(sql, g):
     """Remplace le LATERAL time_periods par la granularité littérale -> baseline fiable
     (l'ancien field-filter peut être cassé/vide)."""
-    return LATERAL_RE.sub(f"(SELECT '{g}' AS name)", sql)
+    sql = LATERAL_RE.sub(f"(SELECT '{g}' AS name)", sql)
+    return TIME_CTE_RE.sub(
+        lambda match: f"{match.group('name')} AS (SELECT '{g}' AS name)",
+        sql,
+    )
 
 
 def run(mb, cid, params):
@@ -94,7 +113,7 @@ def _ptype(tags, name, default):
     return (tags.get(name) or {}).get("widget-type") or default
 
 
-def base_params(tags, client, window, time_payload):
+def base_params(tags, client, window, time_payload, extra_params=None):
     p = []
     for ct in ("clients", "client"):  # 'client' singulier (magento) = souvent string/=
         if ct in tags:
@@ -108,10 +127,11 @@ def base_params(tags, client, window, time_payload):
                   "target": ["dimension", ["template-tag", "brand_included"]]})
     if time_payload:
         p.append(time_payload)
+    p.extend(copy.deepcopy(extra_params or []))
     return p
 
 
-def convert_card(mb, cid, client, window, dry=False):
+def convert_card(mb, cid, client, window, dry=False, extra_params=None):
     """Crée une COPIE temporal-unit (sandbox 13885) d'une carte time-driven (conversion
     ou non), vérifiée sur les 4 granularités, inscrite au registre. Retourne new_id si
     OK, None sinon. Idempotent : si déjà au registre, renvoie l'id existant."""
@@ -139,7 +159,9 @@ def convert_card(mb, cid, client, window, dry=False):
     base_dq["stages"][0]["template-tags"] = {k: v for k, v in tags.items() if k != "time_period"}
     for g in GRANS:
         base_dq["stages"][0]["native"] = inline_baseline_sql(sql, g)
-        base[g] = run_dataset(mb, base_dq, base_params(tags, client, window, None))
+        base[g] = run_dataset(
+            mb, base_dq, base_params(tags, client, window, None, extra_params)
+        )
 
     ndq = copy.deepcopy(card["dataset_query"])
     ndq["stages"][0]["native"] = new_sql
@@ -163,7 +185,10 @@ def convert_card(mb, cid, client, window, dry=False):
     ok = all(base[g] is not None for g in GRANS)
     for g in GRANS:
         tp = {"type": "temporal-unit", "value": g, "target": ["dimension", ["template-tag", "time_period"]]}
-        if not close(base[g], run(mb, new_id, base_params(tags, client, window, tp))):
+        if not close(
+            base[g],
+            run(mb, new_id, base_params(tags, client, window, tp, extra_params)),
+        ):
             ok = False
     if ok:
         reg.write_text(json.dumps({"old_id": cid, "new_id": new_id, "name": card["name"], "verified": True}))

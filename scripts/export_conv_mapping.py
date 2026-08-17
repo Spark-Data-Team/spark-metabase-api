@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Transforme les lignes Airtable exportées (Conversions table) en mapping client résolu.
+"""LEGACY — transforme un ancien export Airtable en mapping client historique.
+
+Le pipeline opérationnel consomme désormais ``conv-supabase-snapshot.json`` via
+``export_supabase_conversion_mapping.py``. Ne pas utiliser ce script pour une migration.
 Usage: python3 scripts/export_conv_mapping.py migration/conv-airtable-rows-<ts>.json"""
 import json, sys
 from pathlib import Path
@@ -13,7 +16,7 @@ def main():
     n_cf = sum(1 for c in mapping.values() for v in c.values() if v == conv_lib.CONFLICT)
     out = Path(__file__).resolve().parent.parent / "migration" / "conv-client-mapping.json"
     out.write_text(json.dumps(mapping, ensure_ascii=False, indent=2, sort_keys=True))
-    print(f"{len(mapping)} clients -> {out}  (UNMAPPED slots: {n_un}, CONFLICT slots: {n_cf})")
+    print(f"LEGACY: {len(mapping)} clients -> {out}  (UNMAPPED slots: {n_un}, CONFLICT slots: {n_cf})")
 
 if __name__ == "__main__":
     main()

@@ -61,6 +61,202 @@ def test_new_type_columns_custom_and_named():
     assert conv_lib.new_type_columns("Purchases") == ("PURCHASES", "PURCHASES_VALUE")
     assert conv_lib.new_type_columns("Sign ups") == ("SIGN_UPS", None)
 
+
+def test_merge_mapping_overrides_validates_and_overlays():
+    base = {"Acme": {"0": "__CONFLICT__", "1": "Custom 1"}}
+    out = conv_lib.merge_mapping_overrides(base, [
+        {"client": "Acme", "slot": 0, "new_type": "Purchases"},
+        {"client": "New", "slot": 2, "new_type": "Custom 2"},
+    ])
+    assert out["Acme"] == {"0": "Purchases", "1": "Custom 1"}
+    assert out["New"]["2"] == "Custom 2"
+    assert base["Acme"]["0"] == "__CONFLICT__"  # pas de mutation de l'entrée
+
+
+def test_merge_mapping_overrides_rejects_unknown_and_conflicts():
+    for decisions in (
+        [{"client": "Acme", "slot": 0, "new_type": "Compte SEO"}],
+        [{"client": "Acme", "slot": 0, "new_type": "Leads"},
+         {"client": "Acme", "slot": 0, "new_type": "Purchases"}],
+    ):
+        try:
+            conv_lib.merge_mapping_overrides({}, decisions)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("une décision invalide doit bloquer")
+
+
+def test_generated_card_cache_key_changes_with_mapping():
+    a = conv_lib.generated_card_cache_key(42, {"CONVERSIONS": "LEADS"})
+    b = conv_lib.generated_card_cache_key(42, {"CONVERSIONS": "PURCHASES"})
+    assert a != b
+    assert a == conv_lib.generated_card_cache_key(42, {"CONVERSIONS": "LEADS"})
+
+
+def test_source_tables_liste_toutes_les_tables_jointes():
+    """`conversion_source` ne renvoie qu'UNE table : deux cartes qui lisent des
+    univers différents peuvent donc avoir la même « source ». Une carte GA4 joint
+    la table analytics EN PLUS de campaign_daily_metrics — il faut le voir."""
+    cdm = "global.campaign_daily_metrics"
+    ga4 = (f"SELECT SUM({cdm}.purchases) FROM utils.clients "
+           "JOIN analytics.google__analytics_metrics ON a=b "
+           f"JOIN {cdm} ON c=d")
+    plateforme = (f"SELECT SUM({cdm}.purchases) FROM utils.clients "
+                  f"JOIN {cdm} ON c=d")
+    assert conv_lib.conversion_source(ga4) == conv_lib.conversion_source(plateforme)
+    assert conv_lib.source_tables(ga4) == {"analytics.google__analytics_metrics",
+                                           "global.campaign_daily_metrics"}
+    assert conv_lib.source_tables(plateforme) == {"global.campaign_daily_metrics"}
+    assert conv_lib.source_tables(ga4) != conv_lib.source_tables(plateforme)
+
+
+def test_source_tables_ignore_la_casse_et_les_alias():
+    sql = "select 1 FROM Global.Campaign_Daily_Metrics AS cdm JOIN utils.clients c ON x=y"
+    assert "global.campaign_daily_metrics" in conv_lib.source_tables(sql)
+
+
+def test_source_tables_vide_si_pas_de_table_connue():
+    assert conv_lib.source_tables("SELECT 1") == set()
+
+
+def test_from_join_ne_prend_pas_un_mot_cle_pour_un_alias():
+    """« FROM a JOIN b » : sans garde, l'alias optionnel avale le mot JOIN et la
+    table suivante n'est jamais vue."""
+    sql = "select 1 from utils.clients join global.campaign_daily_metrics on c=d"
+    assert conv_lib.source_tables(sql) == {"global.campaign_daily_metrics"}
+    trouve = dict(conv_lib._FROMJOIN_RX.findall(sql))
+    assert trouve.get("utils.clients") != "join"
+
+
+def test_conversion_source_voit_la_table_apres_un_join_colle():
+    sql = ("select sum(global.campaign_daily_metrics.purchases) from utils.clients "
+           "join global.campaign_daily_metrics on c=d")
+    assert conv_lib.conversion_source(sql) == "global.campaign_daily_metrics"
+
+
+def _carte_tags_liste():
+    """Carte au format pMBQL : les template-tags sont une LISTE, pas un dict."""
+    return {"dataset_query": {"lib/type": "mbql/query", "stages": [{
+        "lib/type": "mbql.stage/native", "native": "SELECT 1 [[AND {{location}}]]",
+        "template-tags": [
+            {"name": "location", "type": "dimension", "widget-type": "category",
+             "dimension": ["field", {"base-type": "type/Text"}, 396836]},
+            {"name": "date", "type": "dimension", "widget-type": "date/all-options",
+             "dimension": ["field", {"base-type": "type/Date"}, 426427]}]}]}}
+
+
+def _carte_tags_dict():
+    return {"dataset_query": {"type": "native", "native": {
+        "query": "SELECT 1 [[AND {{campaign_location}}]]",
+        "template-tags": {
+            "campaign_location": {"name": "campaign_location", "type": "dimension",
+                                  "dimension": ["field", 396836, None]},
+            "date": {"name": "date", "type": "dimension",
+                     "dimension": ["field", 426427, None]}}}}}
+
+
+def test_tag_field_map_accepte_les_tags_en_liste():
+    """Une carte pMBQL ne doit pas faire exploser la lecture des filtres."""
+    assert conv_lib.tag_field_map(_carte_tags_liste()) == {"location": 396836, "date": 426427}
+
+
+def test_tag_rename_map_apparie_location_et_campaign_location_par_field():
+    """Deux noms de filtre pour le MÊME field : on doit pouvoir recâbler."""
+    assert conv_lib.tag_rename_map(_carte_tags_liste(), _carte_tags_dict()) == {
+        "location": "campaign_location"}
+
+
+def test_tag_rename_map_n_inverse_jamais_une_exclusion():
+    """`campaign_location` et `campaign_location_exclude` visent le MÊME field mais
+    ont un sens OPPOSÉ. Les apparier recâblerait un filtre d'exclusion sur une
+    inclusion : le dashboard garderait l'air de marcher en filtrant à l'envers."""
+    source = {"dataset_query": {"type": "native", "native": {
+        "query": "SELECT 1 [[AND {{campaign_location_exclude}}]]",
+        "template-tags": {
+            "campaign_location": {"name": "campaign_location", "type": "dimension",
+                                  "dimension": ["field", 396836, None]},
+            "campaign_location_exclude": {"name": "campaign_location_exclude",
+                                          "type": "dimension",
+                                          "dimension": ["field", 396836, None]}}}}}
+    cible = {"dataset_query": {"type": "native", "native": {
+        "query": "SELECT 1 [[AND {{location}}]]",
+        "template-tags": {
+            "location": {"name": "location", "type": "dimension",
+                         "dimension": ["field", 396836, None]}}}}}
+    m = conv_lib.tag_rename_map(source, cible)
+    assert m.get("campaign_location") == "location"          # inclusion -> inclusion
+    assert "campaign_location_exclude" not in m               # exclusion : jamais
+
+
+def test_tag_rename_map_apparie_deux_exclusions_entre_elles():
+    source = {"dataset_query": {"type": "native", "native": {
+        "query": "SELECT 1", "template-tags": {
+            "campaign_location_exclude": {"name": "campaign_location_exclude",
+                                          "type": "dimension",
+                                          "dimension": ["field", 396836, None]}}}}}
+    cible = {"dataset_query": {"type": "native", "native": {
+        "query": "SELECT 1", "template-tags": {
+            "location_exclude": {"name": "location_exclude", "type": "dimension",
+                                 "dimension": ["field", 396836, None]}}}}}
+    assert conv_lib.tag_rename_map(source, cible) == {
+        "campaign_location_exclude": "location_exclude"}
+
+
+def test_tag_rename_map_n_apparie_pas_des_fields_differents():
+    autre = json.loads(json.dumps(_carte_tags_dict()))
+    autre["dataset_query"]["native"]["template-tags"]["campaign_location"]["dimension"] = \
+        ["field", 999999, None]
+    assert conv_lib.tag_rename_map(_carte_tags_liste(), autre) == {}
+
+
+def test_incompatible_wired_tags_accepte_les_tags_en_liste():
+    """Même contrôle de type quand les tags arrivent en liste."""
+    assert conv_lib.incompatible_wired_tags(
+        _carte_tags_liste(), _carte_tags_dict(), {"location"},
+        {"location": "campaign_location"}) == {}
+
+
+def test_cache_key_is_content_only_not_per_client():
+    """Deux clients dont la substitution est identique produisent le MÊME SQL :
+    ils doivent partager une seule carte, pas en fabriquer une chacun."""
+    sub = {"CONVERSIONS": "PURCHASES"}
+    assert conv_lib.generated_card_cache_key(42, sub) == conv_lib.generated_card_cache_key(42, sub)
+    # la carte source reste discriminante
+    assert conv_lib.generated_card_cache_key(42, sub) != conv_lib.generated_card_cache_key(43, sub)
+
+
+def test_lookup_generated_card_reuses_a_card_made_for_another_client():
+    """Le registre historique range par client. Une entrée faite pour Acme doit
+    servir à Globex quand la substitution est la même, sinon on regénère un jumeau."""
+    sub = {"CONVERSIONS": "PURCHASES"}
+    legacy = conv_lib.legacy_cache_key(42, "Acme", sub)
+    registry = {legacy: 999}
+    found, canonical = conv_lib.lookup_generated_card(registry, 42, sub)
+    assert found == 999
+    assert canonical == conv_lib.generated_card_cache_key(42, sub)
+
+
+def test_lookup_generated_card_prefers_the_canonical_entry():
+    sub = {"CONVERSIONS": "PURCHASES"}
+    registry = {conv_lib.legacy_cache_key(42, "Acme", sub): 999,
+                conv_lib.generated_card_cache_key(42, sub): 111}
+    found, _ = conv_lib.lookup_generated_card(registry, 42, sub)
+    assert found == 111
+
+
+def test_lookup_generated_card_never_crosses_a_different_substitution():
+    registry = {conv_lib.legacy_cache_key(42, "Acme", {"CONVERSIONS": "LEADS"}): 999}
+    found, _ = conv_lib.lookup_generated_card(registry, 42, {"CONVERSIONS": "PURCHASES"})
+    assert found is None
+
+
+def test_lookup_generated_card_never_crosses_a_different_source_card():
+    sub = {"CONVERSIONS": "PURCHASES"}
+    registry = {conv_lib.legacy_cache_key(42, "Acme", sub): 999}
+    found, _ = conv_lib.lookup_generated_card(registry, 43, sub)
+    assert found is None
+
 def test_build_client_mappings_resolves_consistent_and_flags_unmapped_conflict():
     records = [
         {"client": "Pro Nutrition", "type": "Main conversion", "new_type": "Purchases"},
@@ -245,6 +441,20 @@ def test_substitution_map():
     assert sub["CONVERSIONS_1"] == "CUSTOM_CONVERSIONS_1" and sub["CONVERSION_1_VALUE"] == "CUSTOM_CONVERSIONS_1_VALUE"
     assert sub["CONVERSIONS_3"] == "CUSTOM_CONVERSIONS_2"  # slot 3 -> Custom 2 (number differs!)
     assert "CONVERSIONS_2" in unm
+
+
+def test_lossy_count_only_value_columns_flags_signups_value():
+    assert conv_lib.lossy_count_only_value_columns(
+        ["CONVERSION_2_VALUE", "CONVERSIONS_7"],
+        {2: "Sign ups", 7: "Purchases"},
+    ) == ["CONVERSION_2_VALUE"]
+
+
+def test_lossy_count_only_value_columns_allows_count_value_mapping():
+    assert conv_lib.lossy_count_only_value_columns(
+        ["CONVERSION_2_VALUE"],
+        {2: "Purchases"},
+    ) == []
 
 def test_apply_substitution_whole_word_and_case():
     sub = {"CONVERSIONS_1": "CUSTOM_CONVERSIONS_1", "CONVERSIONS": "PURCHASES"}
@@ -635,6 +845,245 @@ def test_drop_conversion_selects_ignores_block_comments():
     assert "clicks" in out and "FROM data" in out          # colonne saine + vrai FROM intacts
 
 
+def test_drop_case_branches_distribution_removes_unmapped_slots():
+    # carte « distribution » (52936) : SUM(CASE WHEN c.name='conversions_N' THEN <col> ...) — après
+    # apply_substitution, les slots MAPPÉS ont un THEN nommé (leads, custom_conversions_2), les slots
+    # NON mappés gardent le positionnel (conversions_1/_5). drop_conversion_selects retirerait TOUT
+    # l'item (= la métrique) et casserait la carte ; ici on retire seulement les BRANCHES positionnelles.
+    sql = ("SELECT date,\n"
+           "  SUM(CASE\n"
+           "    WHEN c.name = 'conversions' THEN leads\n"
+           "    WHEN c.name = 'conversions_1' THEN conversions_1\n"
+           "    WHEN c.name = 'conversions_2' THEN custom_conversions_2\n"
+           "    WHEN c.name = 'conversions_5' THEN conversions_5\n"
+           "    WHEN c.name = 'add_to_carts' THEN add_to_carts\n"
+           "    ELSE 0\n"
+           "  END) AS value\n"
+           "FROM data GROUP BY 1")
+    out = conv_lib.drop_conversion_case_branches(sql)
+    assert conv_lib.old_conversion_columns(out) == set()       # plus aucun positionnel
+    assert "THEN leads" in out and "THEN custom_conversions_2" in out  # branches mappées conservées
+    assert "THEN add_to_carts" in out                          # branche non-conversion conservée
+    assert "THEN conversions_1" not in out and "THEN conversions_5" not in out  # branches non mappées retirées
+    assert "ELSE 0" in out and out.count("END") == sql.count("END")  # CASE reste valide (ELSE + END)
+
+
+def test_drop_case_branches_noop_when_no_positional():
+    sql = ("SELECT SUM(CASE WHEN c.name='purchases' THEN purchases "
+           "WHEN c.name='leads' THEN leads ELSE 0 END) AS v FROM t")
+    assert conv_lib.drop_conversion_case_branches(sql) == sql
+
+
+def test_drop_case_branches_preserves_nested_case_in_kept_branch():
+    # une branche NON-conversion contient un CASE imbriqué (formatage de semaine 52936) : le retrait
+    # des branches conversion voisines ne doit pas toucher ce CASE imbriqué (test du parseur récursif).
+    sql = ("SELECT\n"
+           "  CASE\n"
+           "    WHEN t.name='week' THEN yearofweek(date) || '_' || CASE WHEN len(x)=1 THEN '0' ELSE '' END || w\n"
+           "    ELSE to_char(date,'YYYY_MM')\n"
+           "  END AS date,\n"
+           "  SUM(CASE\n"
+           "    WHEN c.name='conversions_1' THEN conversions_1\n"
+           "    WHEN c.name='conversions_2' THEN custom_conversions_2\n"
+           "    ELSE 0\n"
+           "  END) AS value\n"
+           "FROM t GROUP BY 1")
+    out = conv_lib.drop_conversion_case_branches(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "THEN custom_conversions_2" in out
+    assert "yearofweek(date)" in out and "CASE WHEN len(x)=1 THEN '0' ELSE '' END" in out  # nested intact
+    assert "THEN conversions_1" not in out
+
+
+def test_drop_case_branches_selector_qualified_positional():
+    # sélecteur (49788) : CASE WHEN metrics.name='conversions_5' THEN aggregated_data.conversions_5 ...
+    # le positionnel est QUALIFIÉ par un alias de table -> la branche est quand même retirée, l'ELSE et
+    # les branches nommées sont conservés.
+    sql = ("SELECT dimension_1, date,\n"
+           "  CASE\n"
+           "    WHEN metrics.name = 'purchases' THEN aggregated_data.purchases\n"
+           "    WHEN metrics.name = 'conversions_5' THEN aggregated_data.conversions_5\n"
+           "    WHEN metrics.name = 'conversion_5_value' THEN aggregated_data.conversion_5_value\n"
+           "    ELSE aggregated_data.cpc\n"
+           "  END AS metric_1\n"
+           "FROM aggregated_data")
+    out = conv_lib.drop_conversion_case_branches(sql)
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "aggregated_data.purchases" in out       # branche nommée conservée
+    assert "aggregated_data.cpc" in out             # ELSE conservé
+    assert "'conversions_5'" not in out             # la branche entière (littéral inclus) est partie
+
+
+def test_drop_case_branches_keeps_case_when_all_branches_positional():
+    # sûreté par CASE : si retirer les branches positionnelles VIDERAIT le CASE (0 WHEN restant ->
+    # SQL invalide), on laisse ce CASE INCHANGÉ (le filet render_ok + le fallback sans-drop couvrent).
+    sql = ("SELECT SUM(CASE\n"
+           "    WHEN c.name='conversions_1' THEN conversions_1\n"
+           "    WHEN c.name='conversions_2' THEN conversions_2\n"
+           "    ELSE 0\n"
+           "  END) AS value\n"
+           "FROM t")
+    assert conv_lib.drop_conversion_case_branches(sql) == sql
+
+
+def test_drop_case_branches_preserves_literals_and_comments():
+    # un littéral 'conversions_1' hors CASE et un commentaire ne doivent jamais être touchés.
+    sql = ("SELECT SUM(clicks) AS clicks  -- garde conversions_1 d'origine\n"
+           "FROM t WHERE label = 'conversions_1'")
+    assert conv_lib.drop_conversion_case_branches(sql) == sql
+
+
+def test_drop_case_branches_then_drop_selects_clean_distribution():
+    # intégration : la chaîne réelle (branches puis items SELECT) rend la distribution 100% propre.
+    sql = ("SELECT date,\n"
+           "  SUM(CASE\n"
+           "    WHEN c.name='conversions_1' THEN conversions_1\n"
+           "    WHEN c.name='conversions_2' THEN custom_conversions_2\n"
+           "    ELSE 0\n"
+           "  END) AS value\n"
+           "FROM data GROUP BY 1")
+    out = conv_lib.drop_conversion_selects(conv_lib.drop_conversion_case_branches(sql))
+    assert conv_lib.old_conversion_columns(out) == set()
+    assert "THEN custom_conversions_2" in out and "AS value" in out
+
+
+def test_case_branch_prune_cleans_true_for_distribution():
+    # carte distribution DÉJÀ substituée (slots mappés -> nommés) : le positionnel restant ne vit QUE
+    # dans des branches CASE. Le PRUNING des branches À LUI SEUL nettoie tout -> drop-only SÛR (le CASE
+    # survit avec ses branches mappées, la carte garde sa métrique).
+    sql = ("SELECT date, SUM(CASE\n"
+           "  WHEN c.name='conversions_1' THEN conversions_1\n"
+           "  WHEN c.name='conversions_2' THEN custom_conversions_2\n"
+           "  ELSE 0 END) AS value FROM t GROUP BY 1")
+    assert conv_lib.case_branch_prune_cleans(sql) is True
+
+
+def test_case_branch_prune_cleans_false_for_business_logic_case():
+    # CAC : la SEULE branche du CASE référence conversions -> pruning viderait le CASE -> no-op -> False.
+    sql = "SELECT CASE WHEN SUM(conversions)!=0 THEN SUM(cost)/SUM(conversions) ELSE 0 END AS cac FROM t"
+    assert conv_lib.case_branch_prune_cleans(sql) is False
+
+
+def test_case_branch_prune_cleans_false_when_needs_select_item_drop():
+    # RÉGRESSION à empêcher : carte mono-métrique dont le positionnel est un ITEM SELECT (pas une
+    # branche CASE). Le pruning de branches ne fait rien -> False : on ne génère PAS de copie drop-only
+    # (sinon retirer l'item viderait la carte = carte BLANCHE, pire que le positionnel).
+    sql = "SELECT current_date AS d, SUM(conversions) AS main FROM t GROUP BY 1"
+    assert conv_lib.case_branch_prune_cleans(sql) is False
+
+
+def test_case_branch_prune_cleans_false_when_no_positional():
+    # rien de positionnel -> rien à pruner -> False (ne pas générer une copie inutile).
+    assert conv_lib.case_branch_prune_cleans("SELECT SUM(purchases) AS p FROM t") is False
+
+
+def test_dataset_has_metric_column_true_on_numeric():
+    # garde-fou anti-blanc : la carte affiche encore une métrique (colonne numérique).
+    cols = [{"name": "DISPLAY_DATE", "base_type": "type/DateTime"},
+            {"name": "PURCHASES", "base_type": "type/Float"}]
+    assert conv_lib.dataset_has_metric_column(cols) is True
+
+
+def test_dataset_has_metric_column_false_when_only_dimensions():
+    # RÉGRESSION anti-blanc : le drop a retiré la seule métrique -> il ne reste qu'une date/dimension
+    # -> carte BLANCHE -> à refuser (gardée sur l'ancien).
+    cols = [{"name": "DISPLAY_DATE", "base_type": "type/DateTime"}]
+    assert conv_lib.dataset_has_metric_column(cols) is False
+
+
+def test_dataset_has_metric_column_uses_effective_type_and_handles_empty():
+    assert conv_lib.dataset_has_metric_column([{"name": "n", "effective_type": "type/Integer"}]) is True
+    assert conv_lib.dataset_has_metric_column([]) is False
+    assert conv_lib.dataset_has_metric_column(None) is False
+
+
+def test_old_columns_sees_through_apostrophe_in_line_comment():
+    # Une apostrophe française dans un `-- …` ouvre un faux littéral qui court jusqu'au guillemet
+    # suivant : tout le SQL entre les deux devient invisible. Le détecteur DOIT masquer les
+    # commentaires, sinon il certifie « clean » une carte pleine de positionnel.
+    sql = ("SELECT\n"
+           "  -- rapport adgroup d'origine :\n"
+           "  SUM(conversions_2) AS conversions_2,\n"
+           "  CASE WHEN campaign_type = 'brand' THEN 1 ELSE 0 END AS is_brand\n"
+           "FROM t")
+    assert conv_lib.old_conversion_columns(sql) == {"CONVERSIONS_2"}
+
+
+def test_apply_substitution_rewrites_through_apostrophe_in_line_comment():
+    # Même angle mort côté réécriture : la substitution était silencieusement sautée.
+    # Le faux littéral court de l'apostrophe de `d'origine` jusqu'au guillemet de 'brand' :
+    # sans ce second guillemet, aucun littéral ne matche et le bug ne se déclenche pas.
+    sql = ("SELECT\n"
+           "  -- rapport adgroup d'origine :\n"
+           "  SUM(conversions_2) AS conversions_2,\n"
+           "  CASE WHEN campaign_type = 'brand' THEN 1 ELSE 0 END AS is_brand\n"
+           "FROM t")
+    out = conv_lib.apply_substitution(sql, {"CONVERSIONS_2": "PURCHASES"})
+    assert "conversions_2" not in out.lower()
+    assert "purchases" in out.lower()
+    assert conv_lib.old_conversion_columns(out) == set()
+
+
+def test_apply_substitution_still_protects_real_literals_and_comment_text():
+    # Le durcissement ne doit pas casser la raison d'être du masque : une VALEUR 'conversions_1'
+    # reste une valeur, et le texte d'un commentaire n'est pas du code à réécrire.
+    sql = ("SELECT SUM(conversions_1) AS c\n"
+           "  -- ancienne colonne conversions_1 d'avant\n"
+           "FROM t WHERE event = 'conversions_1'")
+    out = conv_lib.apply_substitution(sql, {"CONVERSIONS_1": "LEADS"})
+    assert "'conversions_1'" in out                  # littéral intact
+    assert "-- ancienne colonne conversions_1" in out  # commentaire intact
+    assert "sum(leads)" in out.lower()               # seule la vraie colonne est réécrite
+
+
+def test_old_columns_ignores_positional_named_only_in_a_comment():
+    sql = "SELECT SUM(clicks) AS clicks\n  -- TODO: brancher conversions_3 plus tard\nFROM t"
+    assert conv_lib.old_conversion_columns(sql) == set()
+
+
+def test_etl_lag_accepts_empty_custom_slot_target():
+    # Custom N <- slot N, colonne cible vide (ETL pas passé) : value-preserving -> accepté.
+    diffs = [("CONVERSIONS_4", "CUSTOM_CONVERSIONS_4", 33247.0, 0.0),
+             ("CONVERSION_4_VALUE", "CUSTOM_CONVERSIONS_4_VALUE", 1200.0, 0.0)]
+    assert conv_lib.diffs_are_etl_lag_value_preserving(diffs) is True
+
+
+def test_etl_lag_rejects_named_column_target():
+    # slot 15 -> PURCHASES sans info de mapping : on refuse (ambiguïté colonne nommée).
+    diffs = [("CONVERSIONS_15", "PURCHASES", 8808.0, 0.0)]
+    assert conv_lib.diffs_are_etl_lag_value_preserving(diffs) is False
+
+
+def test_etl_lag_accepts_sole_target_named_column():
+    # slot 0 -> Purchases, et Purchases n'est la cible QUE du slot 0 -> value-preserving.
+    diffs = [("CONVERSIONS", "PURCHASES", 500.0, 0.0)]
+    cmap = {0: "Purchases", 1: "Custom 1", 2: "Sign ups"}
+    assert conv_lib.diffs_are_etl_lag_value_preserving(diffs, cmap) is True
+
+
+def test_etl_lag_rejects_named_column_shared_by_two_slots():
+    # PURCHASES reçoit slot 0 ET slot 15 (cas Lunii) -> ambigu, refusé.
+    diffs = [("CONVERSIONS", "PURCHASES", 500.0, 0.0)]
+    cmap = {0: "Purchases", 15: "Purchases"}
+    assert conv_lib.diffs_are_etl_lag_value_preserving(diffs, cmap) is False
+
+
+def test_etl_lag_rejects_nonzero_target():
+    # cible non vide mais différente = vrai mismatch, pas un retard ETL.
+    diffs = [("CONVERSIONS_4", "CUSTOM_CONVERSIONS_4", 33247.0, 500.0)]
+    assert conv_lib.diffs_are_etl_lag_value_preserving(diffs) is False
+
+
+def test_etl_lag_rejects_wrong_slot_custom():
+    # Custom d'un AUTRE slot que la source = mapping incohérent -> refusé.
+    diffs = [("CONVERSIONS_4", "CUSTOM_CONVERSIONS_7", 33247.0, 0.0)]
+    assert conv_lib.diffs_are_etl_lag_value_preserving(diffs) is False
+
+
+def test_etl_lag_false_on_empty_diffs():
+    assert conv_lib.diffs_are_etl_lag_value_preserving([]) is False
+
+
 def test_value_diffs_none_when_identical():
     oc = ["DATE", "CONVERSIONS"]; nc = ["DATE", "PURCHASES"]
     rows = [["w1", 10], ["w2", 20]]
@@ -701,13 +1150,54 @@ TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_drop_conversion_selects_cascades_multiline_case,
          test_drop_conversion_selects_keeps_mapped_slot_cascade,
          test_drop_conversion_selects_ignores_block_comments,
+         test_drop_case_branches_distribution_removes_unmapped_slots,
+         test_drop_case_branches_noop_when_no_positional,
+         test_drop_case_branches_preserves_nested_case_in_kept_branch,
+         test_drop_case_branches_selector_qualified_positional,
+         test_drop_case_branches_keeps_case_when_all_branches_positional,
+         test_drop_case_branches_preserves_literals_and_comments,
+         test_drop_case_branches_then_drop_selects_clean_distribution,
+         test_case_branch_prune_cleans_true_for_distribution,
+         test_case_branch_prune_cleans_false_for_business_logic_case,
+         test_case_branch_prune_cleans_false_when_needs_select_item_drop,
+         test_case_branch_prune_cleans_false_when_no_positional,
+         test_dataset_has_metric_column_true_on_numeric,
+         test_dataset_has_metric_column_false_when_only_dimensions,
+         test_dataset_has_metric_column_uses_effective_type_and_handles_empty,
+         test_old_columns_sees_through_apostrophe_in_line_comment,
+         test_apply_substitution_rewrites_through_apostrophe_in_line_comment,
+         test_apply_substitution_still_protects_real_literals_and_comment_text,
+         test_old_columns_ignores_positional_named_only_in_a_comment,
+         test_etl_lag_accepts_empty_custom_slot_target, test_etl_lag_rejects_named_column_target,
+         test_etl_lag_accepts_sole_target_named_column, test_etl_lag_rejects_named_column_shared_by_two_slots,
+         test_etl_lag_rejects_nonzero_target, test_etl_lag_rejects_wrong_slot_custom,
+         test_etl_lag_false_on_empty_diffs,
          test_value_diffs_none_when_identical, test_value_diffs_flags_mismatched_column,
          test_value_diffs_ignores_row_order, test_value_diffs_tolerates_float_noise,
          test_value_diffs_flags_when_sum_changes_via_rows, test_value_diffs_skips_missing_column,
          test_native_and_tags_legacy_query_fallback, test_old_columns_detects_positional_not_custom,
          test_old_columns_base_not_matched_inside_positional, test_old_columns_ignores_conversion_type_filter,
          test_new_columns_named_and_custom, test_slot_old_columns, test_type_to_slot,
-         test_new_type_columns_custom_and_named, test_build_client_mappings_resolves_consistent_and_flags_unmapped_conflict,
+         test_new_type_columns_custom_and_named, test_merge_mapping_overrides_validates_and_overlays,
+         test_merge_mapping_overrides_rejects_unknown_and_conflicts,
+         test_generated_card_cache_key_changes_with_mapping,
+         test_source_tables_liste_toutes_les_tables_jointes,
+         test_source_tables_ignore_la_casse_et_les_alias,
+         test_source_tables_vide_si_pas_de_table_connue,
+         test_from_join_ne_prend_pas_un_mot_cle_pour_un_alias,
+         test_conversion_source_voit_la_table_apres_un_join_colle,
+         test_tag_field_map_accepte_les_tags_en_liste,
+         test_tag_rename_map_apparie_location_et_campaign_location_par_field,
+         test_tag_rename_map_n_inverse_jamais_une_exclusion,
+         test_tag_rename_map_apparie_deux_exclusions_entre_elles,
+         test_tag_rename_map_n_apparie_pas_des_fields_differents,
+         test_incompatible_wired_tags_accepte_les_tags_en_liste,
+         test_cache_key_is_content_only_not_per_client,
+         test_lookup_generated_card_reuses_a_card_made_for_another_client,
+         test_lookup_generated_card_prefers_the_canonical_entry,
+         test_lookup_generated_card_never_crosses_a_different_substitution,
+         test_lookup_generated_card_never_crosses_a_different_source_card,
+         test_build_client_mappings_resolves_consistent_and_flags_unmapped_conflict,
          test_metric_kind, test_card_shape, test_card_shape_ignores_dims_on_scalar_displays,
          test_conversion_source, test_series_kind_cost_not_cos, test_resolve_picks_by_metric_kind_on_scalar,
          test_resolve_disambiguates_without_brand_smartscalar, test_resolve_disambiguates_by_kpi_set_chart,
@@ -716,7 +1206,9 @@ TESTS = [test_native_and_tags_legacy_format, test_native_and_tags_stages_format,
          test_resolve_new_card_multi_slot_combo_goes_to_review, test_resolve_new_card_value_card_uses_value_columns,
          test_tag_rename_map_matches_by_field_id,
          test_resolve_new_card_unmapped_slot, test_resolve_new_card_no_shape_match_goes_to_review,
-         test_substitution_map, test_apply_substitution_whole_word_and_case, test_apply_substitution_uppercase_viz,
+         test_substitution_map, test_lossy_count_only_value_columns_flags_signups_value,
+         test_lossy_count_only_value_columns_allows_count_value_mapping,
+         test_apply_substitution_whole_word_and_case, test_apply_substitution_uppercase_viz,
          test_literals_never_detected_nor_rewritten, test_metric_kind_french, test_series_kind_avg_before_value,
          test_conversion_source_deterministic_with_alias, test_has_opaque_refs,
          test_incompatible_wired_tags_temporal_unit, test_breakdown_conversion_type_vs_campaign_type,
