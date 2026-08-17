@@ -112,6 +112,8 @@ def render_to_file(tracker: list, path: Path = TRACKER_MD):
     if is_isolated():
         return  # mode parallèle : la vue .md (partagée) est rendue par le CENTRAL après merge
     n = len(tracker)
+    copies = sum(1 for e in tracker if e.get("copy_id") is not None)
+    pending = n - copies
     tagged = sum(1 for e in tracker if e.get("tagged"))
     archived = sum(1 for e in tracker if e.get("old_archived"))
     by_client = {}
@@ -121,11 +123,13 @@ def render_to_file(tracker: list, path: Path = TRACKER_MD):
     header = (
         "# Migration conversions — SUIVI (généré, ne pas éditer à la main)\n\n"
         f"> Source : `migration/conv-migration-tracker.json` · régénérer : `conv_tracker.py --render`.\n"
-        f"> Ancre de campagne : `{TAG}`. **{n} dashboards** · {tagged} taggés · {archived} anciens archivés.\n"
+        f"> Ancre de campagne : `{TAG}`. **{n} entrées = {copies} copies réelles + "
+        f"{pending} lignes sans `copy_id`** · {tagged} taggées · {archived} anciens archivés.\n"
         f"> Clients : " + ", ".join(f"{c} ({k})" for c, k in by_client.items()) + ".\n\n"
-        "Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:true` (opt-in pour "
-        "archiver l'ancien) · `old_archived` (ancien archivé). L'archivage des anciens est piloté par "
-        "`archive_superseded.py` et ne touche QUE les lignes `archive_old:true`.\n\n"
+        "Le tracker décrit uniquement la topologie original→copie. Les statuts historiques `migré` "
+        "ou `validé` ne prouvent pas l'Iron Law : utiliser `migration/accounting-copies.json` et le "
+        "manifeste canonique. `résiduel` signale une copie non promouvable. `archive_old:true` reste "
+        "l'opt-in explicite pour `archive_superseded.py`; aucun original n'est archivé par inférence.\n\n"
     )
     path.write_text(header + render_markdown(tracker) + "\n")
 

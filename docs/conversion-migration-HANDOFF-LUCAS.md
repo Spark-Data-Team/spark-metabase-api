@@ -1,5 +1,10 @@
 # Handoff conversions → Lucas (team lead)
 
+> ⚠️ **Correction 2026-07-16 :** le « 76 % au niveau carte / 3104-4077 tuiles » ci-dessous est une
+> estimation manuelle **non reproductible** (absente du code). Chiffre réel recalculé en live :
+> **≈60 % au niveau tuile**, et **111 / 368 dashboards actionnables complets (30 %)** sur le périmètre
+> clients-actifs. Détail et corrections : `docs/conversion-migration-RESUME.md` (bloc en tête).
+
 **But du doc :** la migration des conversions (positionnel → nommé) est faite à **76 % au niveau carte**
 (scan complet des 370 paires de dashboards : **3104 / 4077 tuiles migrées, 973 restantes**).
 Le reste, ce sont les décisions **qui demandent un regard humain**. Tu es le point de centralisation : tu

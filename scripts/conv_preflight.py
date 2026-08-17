@@ -10,6 +10,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 import conv_lib
+from export_supabase_conversion_mapping import load_repository_mapping
 
 CACHE = REPO / "migration" / "audit-cache"
 _MB = [None]
@@ -30,7 +31,7 @@ def get_card(cid):
 
 def main():
     targets = json.loads(Path(sys.argv[1] if len(sys.argv) > 1 else REPO / "migration" / "conv-targets.json").read_text())
-    mapping_all = json.loads((REPO / "migration" / "conv-client-mapping.json").read_text())
+    mapping_all, _ = load_repository_mapping(REPO / "migration")
     raw = json.loads((REPO / "migration" / "conv-new-index.json").read_text())
     index = {}
     for k, v in raw.items():

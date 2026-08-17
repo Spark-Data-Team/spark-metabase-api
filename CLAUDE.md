@@ -1,0 +1,137 @@
+# Manipuler Metabase depuis ce dépôt
+
+Outil interne Spark. Il pilote **une instance de production** utilisée par 71 clients.
+Toute écriture est visible immédiatement par eux. Lis cette page en entier avant
+d'écrire quoi que ce soit.
+
+## Le chemin normal
+
+```python
+from spark_metabase_api import connect, cards, dashboards, deps, diff
+
+mb = connect()                                  # point d'entrée UNIQUE
+carte = cards.get_card(mb, 32496)               # forme legacy garantie
+cards.put_card(mb, 32496, {"name": "..."})      # écrit, relit, vérifie
+dashboards.put_dashboard(mb, 11917, {...})      # réinjecte tabs + parameters
+deps.tables_of(mb, 32496)                       # dépendances réelles
+```
+
+Ne construis pas ta propre connexion. Le dépôt a longtemps porté trois idiomes
+concurrents (58 `def connect()` recopiés, des imports de `_load_env` depuis un
+script de campagne terminée). `connect()` les remplace tous.
+
+## Les six invariants
+
+**1. Ne teste jamais `if mb.put(...)`.**
+L'ancienne façade rend un `status_code`, donc **500 est truthy**. Une écriture
+ratée passe pour une réussite. Utilise `spark_metabase_api.http`, qui lève
+`MetabaseError`, ou `cards.put_card` / `dashboards.put_dashboard`.
+
+**2. Lis une carte avec `cards.get_card`, jamais `mb.get("/api/card/{id}")`.**
+Depuis MBQL5, `GET /api/card/{id}` rend `dataset_query = {database, lib/type, stages}`
+avec `type = None`. Il faut `?legacy-mbql=true` pour retrouver `{database, native, type}`.
+Tout le code du dépôt lit `type` et `native`. `get_card` ajoute le paramètre pour toi.
+Pour extraire le SQL quelle que soit la forme reçue : `cards.card_sql(carte)`.
+
+**3. Écris un dashboard avec `dashboards.put_dashboard`.**
+Historiquement, un PUT sans `tabs` renvoyait un 500 et omettre `parameters` effaçait les
+filtres. **Testé le 2026-08-17 sur v1.63.13 : ce n'est plus vrai.** Avec 2 onglets et une
+tuile posée sur un onglet, un `PUT {"name": ...}` nu ne lève pas et ne perd rien.
+Passe quand même par `put_dashboard` : sa valeur n'est plus la réinjection, c'est la
+**relecture** qui vérifie que ta modification a atterri et qu'aucun onglet, filtre ou
+tuile n'a disparu. Ne refais pas ce test à chaque montée de version, mais ne réécris pas
+non plus l'ancien avertissement comme s'il était toujours vrai.
+
+**4. Ne te sers pas de `/unreferenced` pour archiver.**
+`backfill-status` vaut `complete: false` sur l'instance. Dans cet état le graphe natif
+remonte du vivant comme mort : une sonde `type=card` a rendu le dashboard 673, vu
+6 547 fois. `deps.unreferenced()` lève tant que le backfill n'est pas terminé, c'est
+volontaire. Ne contourne pas avec `force=True` pour décider d'un archivage.
+
+**5. `Metabase_API` n'est pas thread-safe.**
+Le client peut se ré-authentifier en vol et remplacer son header. Ne le partage pas
+entre threads. Un script du dépôt fait tourner 5 pools de 8 threads sur un client
+partagé : c'est un bug, pas un modèle à copier.
+
+**6. Toute écriture de masse passe par `guard.batch`.**
+Il impose l'ordre : snapshot sur disque, échantillon de 3, différentiel, puis le reste.
+Si l'échantillon échoue, les objets restants ne sont pas touchés et le rapport te donne
+la commande de rollback. Il est en `dry_run=True` par défaut.
+
+```python
+guard.batch(mb, ids, muter=..., mesurer=cards.card_values, mode="identical", dry_run=False)
+guard.restore(mb, "migration/snapshot-card-42.json")   # rollback
+```
+
+## Vérifier son travail
+
+```bash
+.venv/bin/python -m pytest -q        # 512 tests, hors-ligne, < 1 s
+```
+
+Aucune modification ne part sans cette suite au vert. Elle ne touche pas le réseau,
+donc tu peux la lancer autant que tu veux.
+
+Pour un différentiel avant/après sur des données réelles :
+
+```python
+avant = cards.card_values(mb, card_id)
+# ... mutation ...
+apres = cards.card_values(mb, card_id)
+diff.check_values("carte 32496", avant, apres, mode="identical")
+```
+
+`mode="identical"` quand un refacto doit préserver les nombres, `mode="monitor"`
+quand une migration les change exprès. C'est la seule brique du dépôt qu'aucune
+fonctionnalité native de Metabase ne remplace.
+
+**Ses deux angles morts, à connaître.** `check_values` compare un multiset trié,
+donc il ne voit pas une permutation : `{lead: 10, achat: 3}` devenu
+`{lead: 3, achat: 10}` donne `[3, 10]` des deux côtés et passe pour « ok ». C'est
+exactement l'erreur que risque une migration de slots de conversion. Et une carte
+sans colonne numérique mesure `[]` avant comme après, donc le différentiel ne prouve
+rien ; `guard.batch` t'avertit dans ce cas. Dans ces deux situations, compare les
+colonnes nommées à la main.
+
+## Ce qui est natif et ne doit pas être réécrit
+
+| Besoin | À utiliser |
+|---|---|
+| dépendances d'une carte, tables lues, casse potentielle | `deps.py` (API EE native) |
+| contenu obsolète | `/api/ee/stale`, mais voir l'invariant 4 |
+| collections officielles, cartes vérifiées | `authority_level`, `moderated_status` |
+
+N'écris pas de regex `card__(\d+)` pour trouver des dépendances. Elle ne voit rien
+sur une carte SQL native. Le graphe natif résout les vraies tables.
+
+## Structure
+
+```
+spark_metabase_api/   le noyau. Peu de fichiers, chacun avec un contrat clair.
+scripts/              campagnes en cours. Un script = une campagne.
+scripts/_archive/     campagnes closes. Ne pas y toucher, ne pas s'en inspirer.
+docs/superpowers/     specs et plans.
+migration/            artefacts d'exécution (snapshots, rollbacks). Gitignoré sauf
+                      les décisions humaines.
+```
+
+Avant d'écrire un nouveau script, cherche s'il existe déjà. Le dépôt a compté
+jusqu'à 118 scripts, dont beaucoup faisaient la même chose deux fois.
+
+## Campagnes actives
+
+Ne supprime, ne déplace et ne refactore aucun script de campagne active sans accord
+explicite. Elles écrivent en production cette semaine.
+
+- migration des conversions
+- réparation des questions en erreur (août 2026)
+- descriptions top100
+- ménage de la collection 14115
+
+## Interdits
+
+- Créer une clé API, changer les permissions ou toucher au graphe de collections
+  sans demande explicite.
+- Archiver ou supprimer du contenu Metabase sur la foi d'un seul signal.
+- Lancer un lot complet sans avoir validé un échantillon.
+- Publier le paquet sur PyPI. C'est un outil interne.

@@ -122,12 +122,25 @@ def rewrite_selector_dashcard(dc, old_id, new_id, metric_pids, new_tags, variabl
     return nd
 
 
+SPECIAL_OLD_IDS = {87, 4854}
+
+
 def replacement_ids(registry_entries):
-    """new_ids des cartes spéciales DÉJÀ migrées (#87->49788, #4854->49755…) depuis les entrées
-    du registre tu-generic-*.json (vérifiées). À NE PAS retraiter par generate_fallback : leur SQL
-    référence des colonnes CONVERSIONS (dans le grand CASE) mais elles AFFICHENT du nommé — ce ne
-    sont donc PAS des tuiles « restées sur l'ancien »."""
-    return {int(e["new_id"]) for e in (registry_entries or []) if e.get("verified") and e.get("new_id")}
+    """IDs des deux remplacements explicitement exemptés de l'Iron Law.
+
+    Le registre ``tu-generic-*`` contient surtout des copies *temporal-only* dont le
+    SQL de conversion reste positionnel : elles doivent continuer à être scannées et
+    migrées. Seules #87 (sélecteur injectant réellement les colonnes nommées) et #4854
+    (carte impression-share non-conversion, faux positif structurel connu) sont des
+    exceptions documentées.
+    """
+    return {
+        int(entry["new_id"])
+        for entry in (registry_entries or [])
+        if entry.get("verified")
+        and entry.get("new_id")
+        and int(entry.get("old_id", -1)) in SPECIAL_OLD_IDS
+    }
 
 
 def source_tokens(source_param):

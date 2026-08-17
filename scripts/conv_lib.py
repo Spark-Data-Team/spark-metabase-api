@@ -75,12 +75,30 @@ def native_and_tags(card):
             return n.get("query") or "", (n.get("template-tags") or {})
     return "", {}
 
+def _mask_text(text):
+    """Masque selon le TYPE de contenu, jamais à l'aveugle. Retourne (masked, parts).
+
+    - SQL  → littéraux '…' ET commentaires `--`/`/* */` (via _mask_sql). Sans les commentaires,
+             une apostrophe française (`-- coût d'origine`) ouvre un faux littéral qui court
+             jusqu'au guillemet suivant : tout le SQL entre les deux devient INVISIBLE, donc
+             « clean » pour le détecteur et non réécrit par la substitution.
+    - JSON → rien. Un payload JSON (MBQL, visualization_settings) n'a ni littéral SQL ni
+             commentaire SQL : y masquer `--` couperait tout le reste d'un JSON mono-ligne, et
+             y masquer '…' rattraperait deux apostrophes de libellés français distincts.
+             Ne rien masquer y est fail-closed : au pire un faux positif (on bloque), jamais un
+             faux « clean ».
+    """
+    head = (text or "").lstrip()[:1]
+    if head in ("{", "["):
+        return text, []
+    return _mask_sql(text or "")
+
 def old_conversion_columns(sql):
-    masked, _ = _mask_literals(sql or "")
+    masked, _ = _mask_text(sql or "")
     return set(_OLD_RX.findall(masked.upper()))
 
 def new_conversion_columns(sql):
-    masked, _ = _mask_literals(sql or "")
+    masked, _ = _mask_text(sql or "")
     return set(_NEW_RX.findall(masked.upper()))
 
 # Tables that actually hold conversion metrics (the "platform/source"); a swap is only
@@ -106,9 +124,28 @@ def source_family(table):
         return None
     schema = table.split(".", 1)[0]
     return {"global": "ads", "analytics": "analytics", "google": "ads"}.get(schema, schema)
-_FROMJOIN_RX = re.compile(r"(?:\bfrom|\bjoin)\s+([a-z0-9_]+\.[a-z0-9_]+)(?:\s+(?:as\s+)?([a-z0-9_]+))?")
 _SQL_KW = {"on", "where", "left", "right", "inner", "outer", "full", "cross", "join",
            "group", "order", "as", "using", "and", "or", "select", "with"}
+# L'alias est OPTIONNEL et ne peut pas être un mot-clé SQL : sans cette garde,
+# « FROM a JOIN b » fait prendre « join » pour l'alias de `a`, la regex consomme le
+# mot-clé et la table `b` n'est JAMAIS vue (tables manquantes dans conversion_source).
+_FROMJOIN_RX = re.compile(
+    r"(?:\bfrom|\bjoin)\s+([a-z0-9_]+\.[a-z0-9_]+)"
+    r"(?:\s+(?:as\s+)?(?!(?:" + "|".join(sorted(_SQL_KW)) + r")\b)([a-z0-9_]+))?")
+
+def source_tables(sql):
+    """TOUTES les tables de métriques que la requête touche, pas seulement celle
+    qui porte la conversion.
+
+    `conversion_source` n'en renvoie qu'une : une carte GA4 qui joint
+    `analytics.google__analytics_metrics` pour les conversions ET
+    `global.campaign_daily_metrics` pour le coût a donc la même « source » qu'une
+    carte purement plateforme. Comparer les ENSEMBLES évite d'apparier deux cartes
+    qui ne lisent pas le même univers.
+    """
+    low = (sql or "").lower()
+    return {t for t, _ in _FROMJOIN_RX.findall(low) if t in METRIC_TABLES}
+
 
 def conversion_source(sql):
     """The metric source table the card's conversion column comes from, or None.
@@ -144,12 +181,21 @@ def has_opaque_refs(sql):
     low = (sql or "").lower()
     return bool(re.search(r"\{\{\s*snippet\s*:", low) or re.search(r"\{\{\s*#\d+", low))
 
+def tags_as_dict(tags):
+    """{nom -> tag}. `native_and_tags` renvoie un DICT sur les cartes natives
+    classiques et une LISTE sur les cartes pMBQL : tout code qui lit les tags doit
+    passer par ici, sinon il explose sur la moitié du parc."""
+    if isinstance(tags, dict):
+        return tags
+    return {t.get("name"): t for t in (tags or []) if isinstance(t, dict) and t.get("name")}
+
+
 def tag_field_map(card):
     """{template-tag name -> field ref} des field-filters de la carte. Réfs par id
     (recherche en profondeur, dernier entier) ou par NOM ('name:<champ>')."""
     _, tags = native_and_tags(card)
     out = {}
-    for name, d in (tags or {}).items():
+    for name, d in tags_as_dict(tags).items():
         dim = (d or {}).get("dimension")
         if not isinstance(dim, list):
             continue
@@ -174,10 +220,18 @@ def tag_rename_map(old_card, new_card):
     Snowflake field (e.g. 'location' -> 'campaign_location'). Lets a swap re-wire a filter
     whose template-tag name changed, instead of breaking it."""
     o, n = tag_field_map(old_card), tag_field_map(new_card)
+
+    def negatif(name):
+        """Un filtre d'EXCLUSION vise le même field que son jumeau d'inclusion mais
+        a le sens opposé : les apparier filtrerait à l'envers, sans rien casser de
+        visible. On ne rapproche donc que des filtres de même polarité."""
+        return str(name).endswith(("_exclude", "_excluded"))
+
     by_field = {}
     for name, fid in n.items():
-        by_field.setdefault(fid, name)
-    return {name: by_field[fid] for name, fid in o.items() if name not in n and fid in by_field}
+        by_field.setdefault((fid, negatif(name)), name)
+    return {name: by_field[(fid, negatif(name))] for name, fid in o.items()
+            if name not in n and (fid, negatif(name)) in by_field}
 
 def incompatible_wired_tags(old_card, new_card, wired_tags, renames=None):
     """Tags câblés au dashboard dont le TYPE change entre l'ancienne et la nouvelle carte
@@ -187,6 +241,7 @@ def incompatible_wired_tags(old_card, new_card, wired_tags, renames=None):
     renames = renames or {}
     _, ot = native_and_tags(old_card)
     _, nt = native_and_tags(new_card)
+    ot, nt = tags_as_dict(ot), tags_as_dict(nt)
     bad = {}
     for t in wired_tags:
         o, n = ot.get(t), nt.get(renames.get(t, t))
@@ -194,7 +249,7 @@ def incompatible_wired_tags(old_card, new_card, wired_tags, renames=None):
             bad[t] = (o.get("type"), n.get("type"))
     return bad
 
-# --- Type-axis (Airtable slot -> new named) ---
+# --- Type-axis (legacy positional slot -> Supabase named conversion) ---
 TYPE_TO_SLOT = {"Main conversion": 0}
 _ORD = ["1st", "2nd", "3rd"] + [f"{n}th" for n in range(4, 20)]
 for _i, _o in enumerate(_ORD, start=1):
@@ -214,6 +269,83 @@ def new_type_columns(new_type):
         n = int(m.group(1))
         return (CUSTOM_COUNT.get(n), CUSTOM_VALUE.get(n))
     return NAMED_COL.get(new_type, (None, None))
+
+
+def merge_mapping_overrides(mapping, decisions):
+    """Superpose des décisions consultants validées au mapping source.
+
+    Les clés de slot du JSON de mapping restent des chaînes. Toute valeur inconnue,
+    tout slot hors plage ou doublon contradictoire bloque l'ensemble : aucune décision
+    partielle ne doit fuiter vers une migration.
+    """
+    out = json.loads(json.dumps(mapping or {}))
+    seen = {}
+    for decision in decisions or []:
+        client = str(decision.get("client") or "").strip()
+        try:
+            slot = int(decision.get("slot"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"slot consultant invalide: {decision!r}") from exc
+        new_type = str(decision.get("new_type") or "").strip()
+        if not client or not 0 <= slot <= 19:
+            raise ValueError(f"décision consultant invalide: {decision!r}")
+        if new_type_columns(new_type)[0] is None:
+            raise ValueError(f"new_type consultant inconnu: {new_type!r}")
+        key = (client, slot)
+        if key in seen and seen[key] != new_type:
+            raise ValueError(f"décisions contradictoires pour {client} slot {slot}: "
+                             f"{seen[key]!r} vs {new_type!r}")
+        seen[key] = new_type
+    for (client, slot), new_type in seen.items():
+        out.setdefault(client, {})[str(slot)] = new_type
+    return out
+
+
+def _sub_map_digest(sub_map):
+    import hashlib
+    payload = json.dumps(sorted((str(k), str(v)) for k, v in (sub_map or {}).items()),
+                         ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def generated_card_cache_key(card_id, sub_map):
+    """Clé de cache liée AU CONTENU PRODUIT, rien d'autre.
+
+    Le SQL généré est une fonction déterministe de (carte source, substitution) :
+    `apply_substitution` puis les élagages ne regardent que ça. Deux clients dont
+    la substitution coïncide obtiennent donc un SQL identique et doivent PARTAGER
+    une carte. Le client figurait autrefois dans la clé (format v2) : c'est ce qui
+    a fabriqué 602 jumelles exactes dans la collection 14115.
+    """
+    return f"v3|{int(card_id)}|{_sub_map_digest(sub_map)}"
+
+
+def legacy_cache_key(card_id, client, sub_map):
+    """Ancienne clé, par client. Conservée pour relire les registres existants."""
+    return f"v2|{int(card_id)}|{client}|{_sub_map_digest(sub_map)}"
+
+
+def lookup_generated_card(registry, card_id, sub_map):
+    """(carte trouvée | None, clé canonique) pour ce contenu.
+
+    Cherche d'abord la clé canonique, puis RATTRAPE les entrées v2 : une carte
+    fabriquée pour un autre client mais de substitution identique est réutilisable
+    telle quelle. Sans ce rattrapage, changer de format de clé relancerait la
+    génération de toute la collection et doublerait les jumelles au lieu de les
+    supprimer. Les clés v1 (`<id>|<client>`) ne portent pas d'empreinte : on ne
+    peut pas prouver qu'elles correspondent, elles sont donc ignorées.
+    """
+    canonical = generated_card_cache_key(card_id, sub_map)
+    found = (registry or {}).get(canonical)
+    if found:
+        return found, canonical
+    prefix = f"v2|{int(card_id)}|"
+    suffix = f"|{_sub_map_digest(sub_map)}"
+    for key, value in (registry or {}).items():
+        k = str(key)
+        if k.startswith(prefix) and k.endswith(suffix):
+            return value, canonical
+    return None, canonical
 
 def _slot_of(col):
     if col in ("CONVERSIONS", "CONVERSION_VALUE"):
@@ -240,19 +372,42 @@ def substitution_map(old_cols, client_mapping):
             unmapped.append(col)
     return sub, unmapped
 
+
+def lossy_count_only_value_columns(unmapped_cols, client_mapping):
+    """Valeurs positionnelles qui seraient supprimées par un mapping count-only.
+
+    Exemple : slot 2 -> ``Sign ups`` mappe ``CONVERSIONS_2`` vers ``SIGN_UPS`` mais
+    n'a aucune cible pour ``CONVERSION_2_VALUE``. La cascade fallback ne doit pas
+    effacer cette valeur silencieusement : sa présence peut alimenter une métrique
+    visible ou dérivée même quand le nom brut n'apparaît pas dans la viz.
+    """
+    lossy = []
+    for col in unmapped_cols or []:
+        up = str(col).upper()
+        if not (up == "CONVERSION_VALUE" or up.endswith("_VALUE")):
+            continue
+        slot = _slot_of(up)
+        nt = client_mapping.get(slot) if slot is not None else None
+        count_col, value_col = new_type_columns(nt) if nt else (None, None)
+        if count_col and not value_col:
+            lossy.append(col)
+    return sorted(lossy)
+
 def apply_substitution(text, sub_map):
     """Replace each OLD column by its NEW column in SQL/JSON text, whole-word and
     case-preserving. Longest keys first; guarded so CONVERSIONS doesn't match inside
     CONVERSIONS_1, nor CONVERSIONS_1 inside CONVERSIONS_10, nor re-hit CUSTOM_CONVERSIONS_1.
-    SQL string literals '...' are never rewritten (same masking as detection)."""
+    Masquage par type de contenu (_mask_text) : en SQL, ni les littéraux '...' ni les commentaires
+    ne sont réécrits ; en JSON, rien n'est masqué. Détection et réécriture partagent le MÊME
+    masque, sinon la migration saute une colonne que le contrôle déclare ensuite propre."""
     if not text:
         return text
-    masked, parts = _mask_literals(text)
+    masked, parts = _mask_text(text)
     for old in sorted(sub_map, key=len, reverse=True):
         new = sub_map[old]
         masked = re.sub(rf"(?<![A-Za-z0-9_])(?i:{re.escape(old)})(?![A-Za-z0-9_])",
                         lambda m, n=new: n.lower() if m.group(0).islower() else n.upper(), masked)
-    return _unmask_literals(masked, parts)
+    return _unmask_sql(masked, parts) if parts else masked
 
 
 def _select_item_alias(item_text):
@@ -393,6 +548,110 @@ def drop_conversion_selects(sql):
     return result
 
 
+def _case_branch_spans(masked):
+    """Pour chaque `CASE … END` du SQL masqué, les plages (start, end) de ses branches
+    `WHEN … THEN <corps>` AU MÊME niveau de CASE. Une branche va de son token `WHEN` au token
+    `WHEN`/`ELSE`/`END` suivant du MÊME CASE ; les CASE imbriqués (formatage de semaine…) poussent
+    leur propre contexte, donc leurs `WHEN`/`ELSE`/`END` ne sont pas confondus avec ceux du CASE
+    parent (un corps de branche qui CONTIENT un CASE imbriqué garde ce CASE dans sa plage).
+    Chaque plage inclut sa whitespace de fin (jusqu'au token suivant) → retirer une branche du
+    milieu laisse le séparateur (indentation) de la branche précédente devant la suivante.
+    Retourne [[ (s,e), … ] par CASE]."""
+    stack, result = [], []
+    for m in re.finditer(r"\bCASE\b|\bWHEN\b|\bELSE\b|\bEND\b", masked, re.IGNORECASE):
+        t = m.group(0).upper()
+        if t == "CASE":
+            stack.append({"branches": [], "open": None})
+        elif not stack:
+            continue
+        elif t == "WHEN":
+            top = stack[-1]
+            if top["open"] is not None:
+                top["branches"].append((top["open"], m.start()))
+            top["open"] = m.start()
+        elif t == "ELSE":
+            top = stack[-1]
+            if top["open"] is not None:
+                top["branches"].append((top["open"], m.start()))
+                top["open"] = None
+        elif t == "END":
+            top = stack.pop()
+            if top["open"] is not None:
+                top["branches"].append((top["open"], m.start()))
+            result.append(top["branches"])
+    return result
+
+
+def drop_conversion_case_branches(sql):
+    """Brique b (complément de `drop_conversion_selects`) — retire les BRANCHES `WHEN … THEN …`
+    d'un CASE qui référencent une colonne conversion POSITIONNELLE non mappée, SANS retirer l'item
+    SELECT entier. Cible les deux familles « carte large » où le positionnel vit DANS un CASE, pas
+    dans un item :
+      (a) distribution (52936) : `SUM(CASE WHEN c.name='conversions_N' THEN conversions_N … END)` ;
+      (b) sélecteur de métrique (49788) : `CASE WHEN metrics.name='conversions_N' THEN
+          aggregated_data.conversions_N … END`.
+    Après `apply_substitution`, les slots MAPPÉS ont un THEN nommé (leads, custom_conversions_2…) et
+    seuls les slots NON mappés gardent le positionnel : on ne retire donc QUE les branches non mappées
+    (jamais un slot mappé). `drop_conversion_selects` retirerait TOUT l'item (= la métrique) et
+    casserait la carte ; ici le CASE survit avec ses branches valides.
+
+    Self-safe : SQL inchangé si aucune colonne positionnelle ; par CASE, si retirer les branches
+    positionnelles ne laissait AUCUN `WHEN` (CASE vide = SQL invalide), ce CASE est laissé intact
+    (filet aval : render_ok + fallback sans-drop). Les colonnes positionnelles hors CASE (items de
+    CTE) restent pour `drop_conversion_selects` en aval. Littéraux et commentaires jamais touchés."""
+    if not sql:
+        return sql
+    seed = {c.lower() for c in old_conversion_columns(sql)}
+    if not seed:
+        return sql
+    masked, parts = _mask_sql(sql)
+    to_remove = []
+    for branches in _case_branch_spans(masked):
+        killed = [(s, e) for (s, e) in branches if _refs_any(masked[s:e], seed)]
+        if not killed or len(killed) == len(branches):
+            continue                          # rien à retirer, ou retirer viderait le CASE -> no-op
+        to_remove.extend(killed)
+    if not to_remove:
+        return sql
+    out = masked
+    for s, e in sorted(to_remove, reverse=True):   # de la fin au début : indices stables
+        out = out[:s] + out[e:]
+    return _unmask_sql(out, parts)
+
+
+def case_branch_prune_cleans(sql):
+    """True si `sql` contient du positionnel ET que le PRUNING des branches CASE non mappées, À LUI
+    SEUL (sans retirer aucun item SELECT), en retire la TOTALITÉ. C'est le cas SÛR des cartes
+    « distribution / sélecteur » où le positionnel ne vit QUE dans des branches CASE : le CASE survit
+    avec ses branches mappées, donc la carte garde sa métrique.
+
+    Sert à `generate_fallback` pour décider de générer une copie « drop-only » d'une carte DÉJÀ
+    substituée dont il ne reste que des slots NON mappés (sub_map vide). On l'AUTORISE seulement ici :
+    retirer des ITEMS SELECT dans ce cas viderait une carte mono-métrique dont la conversion non mappée
+    est la seule métrique -> carte BLANCHE (pire que le positionnel). On laisse alors la carte sur
+    l'ancien système. Pur ; ne mute rien."""
+    if not old_conversion_columns(sql):
+        return False
+    pruned = drop_conversion_case_branches(sql)
+    return pruned != sql and not old_conversion_columns(pruned)
+
+
+NUMERIC_BASE_TYPES = frozenset({
+    "type/Integer", "type/BigInteger", "type/Float", "type/Decimal", "type/Number",
+})
+
+def dataset_has_metric_column(cols):
+    """True si ≥1 colonne de sortie (`data.cols` d'une réponse /api/dataset) est NUMÉRIQUE (= une
+    métrique affichable). Garde-fou anti-blanc : si le drop a retiré la seule métrique d'une carte, il
+    ne reste que des dimensions/dates -> carte BLANCHE (« clean » Iron Law mais vide, pire que le
+    positionnel) -> à refuser. Pur ; lit `base_type`/`effective_type`. Faux sur liste vide/None."""
+    for c in cols or []:
+        bt = str((c or {}).get("base_type") or (c or {}).get("effective_type") or "")
+        if bt in NUMERIC_BASE_TYPES:
+            return True
+    return False
+
+
 def has_dashboard_questions(dash):
     """True si le dashboard contient des « Dashboard Questions » (cartes intégrées AU dashboard,
     repérées par `card.dashboard_id` renseigné). Metabase REFUSE alors la copie shallow
@@ -430,6 +689,52 @@ def value_diffs(old_cols, old_rows, new_cols, new_rows, sub_map, tol=1e-6):
         if not _close(os_, ns_, tol):
             diffs.append((oc, nc, os_, ns_))
     return diffs
+
+
+def _named_target_is_sole_for_column(nc, client_mapping):
+    """True si la colonne nommée ``nc`` n'est la cible QUE d'un seul slot dans le mapping client.
+    Alors ``nc`` agrège exactement ce slot → renommer un slot vers elle est value-preserving.
+    False si ``nc`` reçoit plusieurs slots (ex. Lunii PURCHASES = Main + slot web) : ambigu."""
+    up = str(nc).upper()
+    hits = 0
+    for _slot, nt in (client_mapping or {}).items():
+        if nt in (None, UNMAPPED, CONFLICT):
+            continue
+        cnt, val = new_type_columns(nt)
+        if up in {str(cnt).upper(), str(val).upper()}:
+            hits += 1
+            if hits > 1:
+                return False
+    return hits == 1
+
+
+def diffs_are_etl_lag_value_preserving(diffs, client_mapping=None, tol=1e-6):
+    """True si CHAQUE écart de ``value_diffs`` s'explique par un retard ETL sur un mapping
+    STRUCTURELLEMENT value-preserving, c.-à-d. où la colonne cible agrège exactement le slot source :
+
+    - colonne ``CUSTOM_CONVERSIONS_<n>`` pour le slot ``<n>`` d'origine (toujours value-preserving) ;
+    - OU colonne nommée standard (PURCHASES, LEADS…) qui, dans ``client_mapping``, n'est la cible
+      que d'UN seul slot (donc = ce slot exactement).
+
+    Dans les deux cas la somme live de la cible doit être ~0 (colonne pas encore peuplée) : une fois
+    l'ETL passé, l'égalité est garantie. On refuse une colonne nommée reçue par PLUSIEURS slots (ex.
+    Lunii PURCHASES = Main + slot web) : là l'égalité n'est pas garantie, le garde-fou reste actif.
+    ``client_mapping`` = {slot: new_type}. Renvoie False sur une liste vide."""
+    if not diffs:
+        return False
+    custom_cols = {c.upper() for c in CUSTOM_COUNT.values()} | {c.upper() for c in CUSTOM_VALUE.values()}
+    for oc, nc, _osum, nsum in diffs:
+        slot = _slot_of(oc)
+        if slot is None:
+            return False
+        up = str(nc).upper()
+        is_custom_same_slot = up in {str(CUSTOM_COUNT.get(slot)).upper(), str(CUSTOM_VALUE.get(slot)).upper()} and up in custom_cols
+        is_sole_named = (client_mapping is not None) and _named_target_is_sole_for_column(nc, client_mapping)
+        if not (is_custom_same_slot or is_sole_named):
+            return False
+        if abs(nsum) > tol:          # cible non vide → vrai écart, pas un retard ETL
+            return False
+    return True
 
 
 def repoint_visualizer_source(viz_settings, old_cid, new_cid):
@@ -481,7 +786,7 @@ def substitute_viz(viz, sub_map):
 GENERIC_CONV_TITLES = frozenset({"conversions", "conversion", "main conversion"})
 
 def conversion_display_names(old_cols, cmap):
-    """Noms d'affichage (Airtable) des conversions NOMMÉES qu'une tuile mesure : pour chaque ancienne
+    """Noms d'affichage des conversions NOMMÉES qu'une tuile mesure : pour chaque ancienne
     colonne conversion -> slot -> cmap[slot]. `old_cols` = sub_map (dict, clés=colonnes) ou itérable
     de colonnes. Ignore les slots non mappés / en conflit."""
     cols = old_cols.keys() if isinstance(old_cols, dict) else old_cols
@@ -693,7 +998,7 @@ def map_table_columns(old_visible, client_mapping, new_cols, dimension_new):
     de la famille mixte (toutes conversions). Retourne (mapping {old->new}, unmapped[]).
     - dimension (DATE/CAMPAIGN_*/...) -> dimension_new
     - base (cost/impressions/...) -> CURRENT_<base>
-    - métrique de conversion (slot 0=main, n positionnel) -> via mapping client Airtable
+    - métrique de conversion (slot 0=main, n positionnel) -> via mapping client Supabase
       slot->new_type (Purchases/Custom k), puis colonne CURRENT_<token>[_CR/_CAC/_VALUE/_ROAS].
     Une colonne sans mapping client, ou dont la cible n'existe pas dans new_cols, va en unmapped
     (le moteur garde alors l'ancien tableau / signale)."""

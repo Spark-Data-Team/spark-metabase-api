@@ -1,10 +1,10 @@
 # Migration conversions — SUIVI (généré, ne pas éditer à la main)
 
 > Source : `migration/conv-migration-tracker.json` · régénérer : `conv_tracker.py --render`.
-> Ancre de campagne : `[conv-2026-06]`. **373 dashboards** · 370 taggés · 0 anciens archivés.
-> Clients : Pro Nutrition (4), Goodiespub (4), Father & Sons (4), Shopinvest (17), Rivadouce (19), 100% Print (1), Absolut Cashmere (1), Braxton (1), Cica Manuka (5), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (1), CapCar (3), Komilfo (2), Osée (2), Solarock (2), Toploc (1), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (2), Zeplug (1), France Toner (3), Lutèce Cosmetics (1), My Blend (4), Pulse Protein (4), Sports d'époque (4), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4), Arrago (2), HomeExchange (4), Merci Walter (2), Walter (2), Yooji (4), Zenchef (3), Comptastar (7), Fauré Le Page (7), Gamin Tout Terrain (1), Redesk (1), Richardson (1), Steel Shed Solutions (6), Figaret (1), Inoui Editions (8), Inter Invest (3), Superdiet (6), Virgil (8), Bambinos (1), Belveo (9), Funkie (2), 24S (14), 900.care (15), BeneBono (6), Cirque du Soleil (7), Dougs (8), En Voiture Simone (EVS) (6), Enlaps (8), Father and Sons (6), Gestion immobilière Walter inc. (4), Jerome Dreyfuss (11), LA Bruket (8), Les petits culottés (10), LocaBoat Group (7), Lunii (17), Perifit (10), Quitoque (18), Quiz Room (10), Tradis (1), U2P (6), Welcome to the Jungle (15).
+> Ancre de campagne : `[conv-2026-06]`. **397 entrées = 394 copies réelles + 3 lignes sans `copy_id`** · 394 taggées · 0 anciens archivés.
+> Clients : Pro Nutrition (4), Goodiespub (4), Father and Sons (10), Shopinvest (17), Rivadouce (19), 100% Print (1), Absolut Cashmere (2), Braxton (1), Cica Manuka (6), AMV Assurance (1), Be Radiance (1), Ecopia (1), Exaprint (2), CapCar (3), Komilfo (2), Osée (3), Solarock (2), Toploc (3), Dedikazio (1), Dermalogica (1), Shining (1), TuneCore (1), Violette_FR (3), Zeplug (2), France Toner (3), Lutèce Cosmetics (2), My Blend (4), Pulse Protein (7), Sports d'époque (5), BYmyCAR (5), Distingo Bank (3), G-Heat (3), Reputation (4), Arrago (2), HomeExchange (4), Merci Walter (3), Walter (2), Yooji (4), Zenchef (3), Comptastar (7), Fauré Le Page (7), Gamin Tout Terrain (1), Redesk (3), Richardson (1), Steel Shed Solutions (6), Figaret (1), Inoui Editions (11), Inter Invest (3), Superdiet (7), Virgil (8), Bambinos (1), Belveo (9), Funkie (2), 24S (14), 900.care (15), BeneBono (6), Cirque du Soleil (7), Dougs (8), En Voiture Simone (EVS) (6), Enlaps (8), Gestion immobilière Walter inc. (4), Jerome Dreyfuss (11), LA Bruket (8), Les petits culottés (10), LocaBoat Group (7), Lunii (17), Perifit (10), Quitoque (18), Quiz Room (10), Tradis (1), U2P (6), Welcome to the Jungle (15), Chilowé (4).
 
-Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:true` (opt-in pour archiver l'ancien) · `old_archived` (ancien archivé). L'archivage des anciens est piloté par `archive_superseded.py` et ne touche QUE les lignes `archive_old:true`.
+Le tracker décrit uniquement la topologie original→copie. Les statuts historiques `migré` ou `validé` ne prouvent pas l'Iron Law : utiliser `migration/accounting-copies.json` et le manifeste canonique. `résiduel` signale une copie non promouvable. `archive_old:true` reste l'opt-in explicite pour `archive_superseded.py`; aucun original n'est archivé par inférence.
 
 | Client | Dashboard | Copie | Original | Taggé | Statut | Archiver ancien | Ancien archivé | Notes |
 |---|---|---|---|---|---|---|---|---|
@@ -13,10 +13,10 @@ Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:tr
 | Pro Nutrition | Global perf (14016) | 25632 | 14016 | ✅ | validé (Lucas) | — | — | pilote étape 1 |
 | Goodiespub | Home | 25764 | 12734 | ✅ | migré | — | — |  |
 | Goodiespub | Pilotage | 25765 | 12716 | ✅ | migré | — | — |  |
-| Father & Sons | Ecomm \| Home | 25831 | 13323 | ✅ | migré | — | — | le plus complet, tout est migré |
-| Father & Sons | Ecomm \| Pilotage | 25833 | 11804 | ✅ | migré | — | — |  |
-| Father & Sons | Noto \| Home | 25834 | 15963 | ✅ | migré | — | — |  |
-| Father & Sons | Shopify | 25836 | 22860 | ✅ | migré | — | — | à onglets |
+| Father and Sons | Ecomm \| Home | 25831 | 13323 | ✅ | migré | — | — | le plus complet, tout est migré |
+| Father and Sons | Ecomm \| Pilotage | 25833 | 11804 | ✅ | migré | — | — |  |
+| Father and Sons | Noto \| Home | 25834 | 15963 | ✅ | migré | — | — |  |
+| Father and Sons | Shopify | 25836 | 22860 | ✅ | migré | — | — | à onglets |
 | Shopinvest | Global | 25896 | 422 | ✅ | migré | — | — |  |
 | Shopinvest | Focus Marge | 25897 | 8803 | ✅ | migré | — | — |  |
 | Shopinvest | Verticales | 25900 | 918 | ✅ | migré | — | — |  |
@@ -381,3 +381,27 @@ Statuts : `migré` (copie faite) · `validé` (consultant OK) · `archive_old:tr
 | Welcome to the Jungle | WTTJ \| Social Performances UK B2C | 27007 | 20947 | ✅ | migré | — | — |  |
 | Welcome to the Jungle | WTTJ \| Performances Globales UK B2B | 27009 | 21408 | ✅ | migré | — | — |  |
 | Welcome to the Jungle | WTTJ \| Performances par Levier & Campagne UK B2B | 27011 | 21540 | ✅ | migré | — | — |  |
+| Absolut Cashmere | Global \| Absolut Cashmere | 27744 | 18406 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Chilowé | Chilowé - Perf par adset | 27745 | 21310 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Chilowé | Perf par adset | 27777 | 21311 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Cica Manuka | Meta/Tiktok- Breakdowns | 27778 | 11249 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu; défaut Client Cica Manuka vérifié |
+| Sports d'époque | Ads & Audiences Analysis \| Sports d'époque | 27779 | 18702 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Toploc | Leads Toploc \| Régions | 27780 | 14678 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Merci Walter | Lead Generation Homepage Performance Template \| Walter | 27781 | 20649 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Exaprint | SEO - Overview | 27782 | 11147 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Lutèce Cosmetics | Lutèce Cosmetics - Homepage | 27783 | 16593 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Osée | Google Shopping & PMax Product Focus Template - Duplicate | 27784 | 19659 | ✅ | résiduel | — | — | Iron Law bloquée: cartes 52358 et 52365 conservent les slots positionnels 1-6; cascade safe-drop KO; aucune promotion |
+| Inoui Editions | Inoui \| GA4 Global | 27785 | 15600 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu; défaut Client Inoui Editions vérifié |
+| Inoui Editions | E-commerce Social Overview Template - Duplicate | 27786 | 22266 | ✅ | résiduel | — | — | Iron Law bloquée: carte 2097 CR by date, écart live CONVERSION_RATE après substitution; gardée sur ancien système; aucune promotion |
+| Inoui Editions | Google Ads - Performance Max Template - Inoui | 27787 | 22233 | ✅ | résiduel | — | — | Iron Law bloquée: carte 15402 PMax search terms; fallback rendu KO avec et sans cascade, copies générées archivées; ancienne carte conservée; aucune promotion |
+| Violette_FR | VFR - E-commerce Multi-Country Performance | 27788 | 19956 | ✅ | résiduel | — | — | Iron Law bloquée: carte générée 52396 conserve les slots positionnels 1-6 après fallback; aucune suppression forcée, aucune promotion |
+| Redesk | Google Perfs \| Redesk | 27789 | 20484 | ✅ | résiduel | — | — | Iron Law bloquée: carte 49957 Performances by date; fallback rendu KO avec et sans cascade, copies archivées; ancienne carte conservée; aucune promotion |
+| Redesk | Google Shopping & PMax Product Focus Template \| Redesk | 27790 | 20880 | ✅ | résiduel | — | — | Iron Law bloquée: carte 1929 écart live CPC 12.48→5.2; cartes 52401 et 5975 fallback rendu KO même sans cascade; aucune promotion |
+| Pulse Protein | Shopify  - Overview template  | 27791 | 21804 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Pulse Protein | SEA Global Overview | 27792 | 21244 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Pulse Protein | Multi-Country Performance   | 27793 | 21243 | ✅ | résiduel | — | — | Iron Law bloquée: carte 52424 conserve les slots positionnels 1-6 après cascade safe-drop KO; doublons Time period nettoyés; aucune promotion |
+| Zeplug | Zeplug \| SEA - Duplicate | 27794 | 17646 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Toploc | Global  conv \| Toploc | 27795 | 14676 | ✅ | résiduel | — | — | Iron Law bloquée: comparaison de valeurs impossible pour cartes 52436, 34245 et 34246; fallbacks archivés, anciennes cartes conservées; aucune promotion |
+| Superdiet | E-commerce Social Adsets, Ads & Products Template - Superdiet | 27796 | 19890 | ✅ | résiduel | — | — | Iron Law bloquée: cartes générées 52448, 52450 et 52453 conservent les slots positionnels 1-6 et leurs valeurs; aucun mapping sûr disponible; aucune promotion |
+| Chilowé | Zenchef \| Performances par Levier & Campagne | 27797 | 9933 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |
+| Chilowé | Chilowé \| Performances par Levier & Campagne   | 27798 | 21309 | ✅ | migré | — | — | pipeline terminé; contrôle final sans résidu |

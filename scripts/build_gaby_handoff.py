@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Construit LE fichier de passation « conversions à trancher » pour le team lead :
+"""Construit le fichier de passation « conversions à trancher » depuis Supabase :
 un CSV clair et net des slots qu'on ne peut PAS migrer automatiquement parce que la
-donnée Airtable est ambiguë ou manquante. Trois catégories :
-  CONFLIT             : 1 slot positionnel = plusieurs conversions nommées (selon compte/event)
+donnée source est ambiguë ou manquante. Trois catégories :
+  CONFLIT             : slot ou cible nommée ambiguë selon les conversion rows
   INDECIS (… OR …)    : new_type non tranché (ex. « Content views OR View Item »)
-  PAIRING_AMBIGU      : ligne multi-select dont type/new_type n'ont pas le même nombre de valeurs
   NON_MAPPE_UTILISE   : slot utilisé par un dashboard mais sans conversion nommée (à remplir)
 
-Sources : l'export CSV Airtable (contexte) + le mapping résolu + conv-targets (dashboards).
+Sources : le snapshot Supabase row-level + les décisions consultants + conv-targets.
 Sortie : migration/CONVERSIONS-A-TRANCHER.csv
-Usage : python3 scripts/build_gaby_handoff.py /chemin/Conversions.csv
+Usage : python3 scripts/build_gaby_handoff.py
 """
 import csv, json, sys
 from collections import defaultdict
@@ -17,6 +16,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 import conv_lib
+from export_supabase_conversion_mapping import load_repository_mapping
 
 SLOT_TO_TYPE = {v: k for k, v in conv_lib.TYPE_TO_SLOT.items()}
 
@@ -30,31 +30,30 @@ def slot_label(slot):
 
 
 def main():
-    csv_path = Path(sys.argv[1])
-    # 1) contexte par (client, slot) depuis le CSV : valeurs nommées vues + plateformes/comptes/events
-    ctx = defaultdict(lambda: defaultdict(list))   # client -> slot -> [(new_type, platform, account, event)]
-    ambiguous_pairs = []                            # lignes multi-select non pairables
-    or_values = []                                  # new_type « … OR … »
-    with open(csv_path, newline="", encoding="utf-8-sig") as fh:
-        for row in csv.DictReader(fh):
-            client = (row.get("brand_name") or "").strip()
-            if not client:
-                continue
-            platform = (row.get("platform_name") or "").strip()
-            account = (row.get("account_name") or "").strip()
-            event = (row.get("conversion_name") or row.get("name") or "").strip()
-            pairs, amb = conv_lib.split_multiselect_pairs(row.get("type"), row.get("new_type"))
-            if amb:
-                ambiguous_pairs.append((client, row.get("type"), row.get("new_type"), platform, account, event))
-            for t, nt in pairs:
-                slot = conv_lib.TYPE_TO_SLOT.get(t)
-                if slot is None:
-                    continue
-                ctx[client][slot].append((nt, platform, account, event))
-                if nt and " OR " in nt:
-                    or_values.append((client, slot, nt, platform, account, event))
+    migration_dir = REPO / "migration"
+    mapping, _ = load_repository_mapping(migration_dir)
+    snapshot = json.loads((migration_dir / "conv-supabase-snapshot.json").read_text())
 
-    mapping = json.loads((REPO / "migration" / "conv-client-mapping.json").read_text())
+    # 1) contexte row-level. Les arrays type[] / new_type[] sont indépendants :
+    # on conserve leur cooccurrence sur la conversion, sans inventer de pairing par index.
+    ctx = defaultdict(lambda: defaultdict(list))   # client -> slot -> [(new_type, platform, account, event)]
+    or_values = []                                  # new_type « … OR … »
+    for record in snapshot.get("records") or []:
+        client = str(record.get("client") or "").strip()
+        if not client:
+            continue
+        account = str(record.get("account_name") or record.get("account_external_id") or "").strip()
+        event = str(record.get("conversion_name") or record.get("conversion_id") or "").strip()
+        new_types = [str(value).strip() for value in (record.get("new_type") or []) if value]
+        for type_name in record.get("type") or []:
+            slot = conv_lib.TYPE_TO_SLOT.get(type_name)
+            if slot is None:
+                continue
+            values = new_types or [None]
+            for nt in values:
+                ctx[client][slot].append((nt, "Supabase", account, event))
+                if nt and " OR " in nt:
+                    or_values.append((client, slot, nt, "Supabase", account, event))
 
     # 2) quels slots chaque client utilise réellement (dashboards) -> priorisation
     used = defaultdict(lambda: defaultdict(set))    # client -> slot -> {dashboard names}
@@ -101,11 +100,6 @@ def main():
     for client, s, nt, p, a, e in or_values:
         add(client, "INDECIS (… OR …)", slot_label(s), nt, f"{p}/{a or '?'}{('/'+e) if e else ''}",
             dashes(client, s), "Trancher entre les options du « OR ».")
-
-    # PAIRING_AMBIGU (multi-select cardinalités ≠)
-    for client, tc, ntc, p, a, e in ambiguous_pairs:
-        add(client, "PAIRING_AMBIGU", str(tc), str(ntc), f"{p}/{a or '?'}{('/'+e) if e else ''}",
-            "", "Préciser quel type positionnel ↔ quelle conversion nommée.")
 
     rows_out.sort(key=lambda r: (r["type_probleme"], r["client"], r["slot"]))
     out = REPO / "migration" / "CONVERSIONS-A-TRANCHER.csv"

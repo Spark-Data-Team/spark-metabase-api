@@ -10,8 +10,9 @@ COPIE (--copy) en conservant les ids de dashcard de la copie. Par tuile de conve
     rendu cohérent (graph.metrics ⊆ colonnes, hors scalaires, insensible casse) ;
     valeurs avant==après NON vides.
 - sinon     : on GARDE l'ancienne carte, statut explicite (à décider / à vérifier).
-JAMAIS de génération de carte. PUT vérifié (raw). Dashboards à onglets refusés (pilotes
-sans onglets ; support tabs à ajouter avant la généralisation).
+JAMAIS de génération de carte. PUT vérifié (raw). Les ids/layout/cartes non migrées
+proviennent toujours de la COPIE (indispensable aux deep copies/Dashboard Questions) ;
+l'original sert uniquement à résoudre la sémantique des vieilles cartes.
 
 Usage:
   python3 scripts/migrate_dashboard_reuse.py --copy 25566 --source 14118 --client "Pro Nutrition"        # dry-run
@@ -24,6 +25,7 @@ sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 import conv_lib
 import bascule_lib
 from spark_metabase_api import validate as V
+from generate_fallback import put_dashboard_verified
 from migrate_dashboard_full import connect, load_inputs, card_values, _dcs
 
 def _client_date_params(tags, client, window):
@@ -76,6 +78,11 @@ KEEP_VIZ = {"card.title", "scalar.comparisons", "click_behavior"}
 # Champs du payload PUT (whitelist : jamais d'entity_id/card/timestamps d'un autre dashboard)
 DC_FIELDS = ("card_id", "row", "col", "size_x", "size_y", "series",
              "parameter_mappings", "visualization_settings", "dashboard_tab_id")
+
+
+def copy_dashcard_payload(copy_dashcard):
+    """Payload whitelisté cloné depuis la copie, jamais depuis le dashboard source."""
+    return {k: json.loads(json.dumps(copy_dashcard.get(k))) for k in DC_FIELDS}
 
 def render_coherent(mb, card_id, client):
     """(ok: bool|None, raison) — None = la requête de contrôle a échoué (≠ rendu cassé)."""
@@ -150,7 +157,7 @@ def main():
             sys.exit(f"⛔ position ambiguë dans la source {key} — appariement impossible")
         src_by_pos[key] = d
 
-    new_dcs, report = [], []
+    new_dcs, report, changed_ids = [], [], set()
     for cdc in _dcs(copy):
         sdc = src_by_pos.get(_pos(cdc, copy_tab_idx))
         if not sdc:
@@ -158,8 +165,11 @@ def main():
             if cdc.get("card_id"):
                 report.append((f"dashcard {cdc.get('id')}", "sans équivalent source — inchangée"))
             continue
-        nd = {k: json.loads(json.dumps(sdc.get(k))) for k in DC_FIELDS}
-        nd["dashboard_tab_id"] = cdc.get("dashboard_tab_id")  # garder l'onglet de la COPIE
+        # Toujours reconstruire le dashcard depuis la COPIE. Une deep copy possède ses
+        # propres ids de cartes (Dashboard Questions) : repartir du source réintroduirait
+        # les ids originaux et peut rendre le PUT invalide ou annuler la deep copy.
+        nd = copy_dashcard_payload(cdc)
+        nd["dashboard_tab_id"] = cdc.get("dashboard_tab_id")
         nd["id"] = cdc.get("id")
         cid = sdc.get("card_id")
         card = mb.get(f"/api/card/{cid}") if cid else None
@@ -268,7 +278,10 @@ def main():
                     tgt[1][1] = renames[tgt[1][1]]
             except Exception:
                 pass
-        nd["visualization_settings"] = {k: v for k, v in (sdc.get("visualization_settings") or {}).items() if k in KEEP_VIZ}
+        nd["visualization_settings"] = {
+            k: v for k, v in (cdc.get("visualization_settings") or {}).items()
+            if k in KEEP_VIZ
+        }
         note = f" (renames {renames})" if renames else ""
         if mask_keep:
             nd["visualization_settings"]["graph.metrics"] = mask_keep
@@ -276,6 +289,7 @@ def main():
                       if m not in mask_keep]
             note += f" (séries masquées: {hidden})"
         report.append((card.get("name"), f"migrée -> 11673 #{newc_id}" + note + diff_note))
+        changed_ids.add(cdc.get("id"))
         new_dcs.append(nd)
 
     print(f"Dashboard {args.copy} (source {args.source}) :")
@@ -286,16 +300,22 @@ def main():
     if not args.yes:
         print("(DRY-RUN — rien modifié.)"); return
 
-    (REPO / "migration" / f"reuse-snapshot-{args.copy}.json").write_text(
-        json.dumps(_dcs(copy), ensure_ascii=False))
-    put_body = {"dashcards": new_dcs}
-    if copy.get("tabs"):  # PUT d'un dash à onglets DOIT inclure tabs (sinon 500)
-        put_body["tabs"] = copy["tabs"]
-    res_put = mb.put(f"/api/dashboard/{args.copy}", "raw", json=put_body)
-    if res_put.status_code != 200:
-        print(f"⛔ PUT {args.copy} ÉCHOUÉ: HTTP {res_put.status_code} — {res_put.text[:400]}")
-        sys.exit(1)
-    print(f"PUT {args.copy}: 200 OK")
+    if not changed_ids:
+        print("Aucune tuile réutilisée — aucun PUT nécessaire.")
+    else:
+        try:
+            snapshot = put_dashboard_verified(
+                mb,
+                args.copy,
+                copy,
+                new_dcs,
+                changed_ids,
+                REPO / "migration" / "reuse-snapshots",
+            )
+        except RuntimeError as exc:
+            print(f"⛔ PUT {args.copy} refusé/annulé : {exc}")
+            sys.exit(1)
+        print(f"PUT {args.copy}: 200 vérifié | snapshot: {snapshot}")
 
     # contrôles finaux
     chk = mb.get(f"/api/dashboard/{args.copy}")

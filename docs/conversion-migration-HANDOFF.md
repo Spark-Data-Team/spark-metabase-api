@@ -1,181 +1,246 @@
-# Migration conversions Metabase — PASSATION (lis-moi en premier)
+# Migration conversions Metabase — passation opérationnelle
 
-> Doc d'onboarding pour un agent frais qui reprend ce chantier.
-> Lis aussi : **`conversion-migration-clients.md`** (qui est fait, où on en est, par client),
-> le mémo `memory/conversion_migration.md` (log détaillé chronologique), et la spec
-> `docs/superpowers/specs/2026-06-03-conversion-migration-design.md`.
-> **Dernière mise à jour : 2026-06-13.**
+> Procédure actuelle, alignée sur l'état live du **2026-07-16**.
 
----
+## Objectif et état
 
-## 1. L'objectif (en une phrase)
-Sur les dashboards **custom** des clients (collection 317, ~110 clients), remplacer chaque tuile branchée sur
-une **ancienne** conversion (colonnes positionnelles Snowflake `CONVERSIONS`, `CONVERSIONS_1..19`, valeurs,
-db 144 / `global.*`) par la **nouvelle** équivalente nommée (`PURCHASES`, `CUSTOM_CONVERSIONS_1..15`, …) déjà
-existante dans la collection **11673**, en préservant mise en page / filtres / valeurs ; PUIS basculer le
-filtre de période du dashboard de l'ancien mécanisme (texte/category) vers le **temporal-unit** Metabase.
+Les dashboards custom doivent abandonner les colonnes de conversion positionnelles au profit des colonnes
+nommées, sans changer les valeurs, les filtres ni le rendu. Tout le travail se fait sur des copies ; les
+originaux restent intouchés.
 
-## 2. Règles d'or (NON négociables)
-1. **TOUJOURS sur des COPIES.** Les liens de partage **Nanga** pointent sur les originaux → on ne touche
-   JAMAIS un original. Copie SHALLOW : `POST /api/dashboard/<id>/copy {"is_deep_copy": false, "collection_id": <test>}`.
-2. **RÉUTILISER les cartes existantes (11673 / famille mixte 13884). JAMAIS de doublon par dashboard.**
-3. **Vérif avant/après par tuile.** On ne migre une tuile que si les valeurs sont identiques (tolérance
-   relative ~1e-9 ; les floats Snowflake bougent au 15e chiffre), ou si la différence est **assumée+validée**
-   (flag `--accept-diffs`).
-4. **Airtable = source de vérité** du mapping (slot ancien → conversion nommée), par client. **Conflit** =
-   un slot mélange plusieurs événements/conversions → **STOP, demander à Gaby** (ne pas deviner).
-5. **En cas de doute : STOP et pose la question.** L'utilisateur préfère ça à une « décision naze ».
-6. **Réponds en français, simple et visuel** (l'utilisateur pense en systèmes ; schémas/tableaux). **Pas de
-   commits sans qu'il le demande.**
+État canonique : **429 originaux in-scope**, dont 136 complets, 240 résiduels, 53 jamais copiés et
+0 inconnu. La topologie physique comprend 16 originaux avec plusieurs copies, tous réconciliés
+(0 non résolu, 17 copies superseded). Il existe **393 copies in-scope : 138 true-100, 255 résiduelles,
+0 inconnue**.
 
-## 3. La chaîne d'outils (LE pipeline, par dashboard COPIE)
-Tous dans `scripts/`. Connexion qui marche : `from archive_collections import connect_resilient; mb = connect_resilient()`
-(NE PAS utiliser reorg_phase1.connect : session_id périmé). Dry-run d'abord (sans `--yes`).
+La promotion live des copies éligibles est terminée : **134 promotions uniques certifiées**. Les originaux,
+les copies superseded et les statuts Iron Law n'ont pas été modifiés par cette opération.
 
-**Raccourci (orchestrateur) :** `migrate_client.py --client "<Nom>" --dashboards <ids ORIGINAUX> [--yes]`
-copie chaque dashboard puis enchaîne les **5 étapes** ci-dessous (--accept-diffs partout, --auto-prepare).
-Onglets SUPPORTÉS. Sinon, étapes manuelles :
+## Les sources à ne pas confondre
 
+| Source | Rôle |
+|---|---|
+| Supabase `pipeline_manager.conversions` | Mapping des conversions |
+| `migration/accounting-copies.json` | État Iron Law live et causes au grain `copy_id` |
+| `migration/canonical-copy-decisions.json` | Choix exhaustifs canonical/superseded des multi-copies |
+| `migration/dashboard-client-attribution.json` | Décisions explicites d'attribution et de scope |
+| `migration/conversion-manifest.json` | Vue canonique par original, scope, topologie et copie canonique |
+| `migration/conv-migration-tracker.json` | Registre original→copie, notes et statut déclaré |
+| `migration/promotion-plan-final-validation.json` | Dernier préflight live de promotion |
+| `migration/promotion-snapshot-*.json` | Preuves d'application et de vérification des promotions |
+
+`migration/accounting-final.json` est la synthèse agrégée de l'accounting live. Le tracker est utile pour la
+topologie, mais son champ `status` ne remplace jamais un scan Iron Law. Accounting + manifeste font foi.
+
+## Mapping Supabase : sémantique obligatoire
+
+Airtable est totalement déprécié. Ne pas le lire, ne pas l'écrire et ne pas réintroduire ses exports dans le
+pipeline.
+
+Dans `pipeline_manager.conversions`, `type[]` et `new_type[]` représentent deux ensembles indépendants. Les
+éléments de même index ne forment pas une paire. Pour un slot donné :
+
+1. construire son ensemble exact de lignes source ;
+2. chercher une cible `new_type` possédant exactement le même ensemble de lignes ;
+3. accepter seulement si cette cible est unique ;
+4. comparer les valeurs live non vides de l'ancien et du nouveau champ ;
+5. écrire uniquement si elles sont strictement égales.
+
+Une intersection partielle, une cardinalité ambiguë, plusieurs cibles, du count-only face à une valeur, une
+comparaison impossible ou une différence de valeur bloque la tuile. Ne jamais zipper les tableaux, compléter
+un mapping par intuition ou utiliser `--accept-diffs` pour forcer un résultat.
+
+Deux slots ne peuvent partager une cible que si leurs ensembles exacts de lignes sont eux-mêmes identiques.
+SQL `NULL` et tableau vide restent deux états distincts dans le snapshot.
+
+Le snapshot local se régénère en lecture seule :
+
+```bash
+.venv/bin/python scripts/export_supabase_conversion_mapping.py \
+  --env-file ../pipeline-manager/.env --write
 ```
-0. COPIER l'original (shallow) dans une collection de test.
-1. migrate_dashboard_reuse.py --copy <C> --source <ORIG> --client "<Nom>" --planned-temporal-unit [--accept-diffs] [--yes]
-      → migre les TUILES conversion vers 11673 (résolution unique via mapping client × colonne × breakdown ×
-        KPI-set × brand × source ; masquage de séries en trop ; --accept-diffs = accepte un écart de valeurs
-        connu/validé). Laisse sur l'ancien ce qu'il ne sait pas (statut « À DÉCIDER »).
-2. swap_tables.py --copy <C> --client "<Nom>" [--accept-diffs] [--yes]
-      → swappe les TABLEAUX multi-slot vers la famille mixte 13884 (résolveur breakdown→carte auto :
-        type/channel/category/network/product/name/location/device/url/date). Mappe les colonnes visibles +
-        reprend les renommages ; vérifie cellule par cellule (aligné par libellé, brand=yes inerte).
-3. bascule_time_filter.py --copy <C> --client "<Nom>" --auto-prepare [--yes]
-      → bascule le param 'Time period' (category) → temporal-unit (MÊME id, les câblages survivent).
-        --auto-prepare : convertit le mécanisme temps de CHAQUE carte bloquante (conversion ou non : Cost,
-        Clicks, Magento, charts orphelins) en copie temporal-unit (sandbox 13885, via convert_card).
-        Fallback : carte non convertible AVEC filtre date séparé ET breakdown≠date (granularité vestigiale,
-        ex. table 2-dim) → DÉBRANCHÉE du filtre temps. Nettoie les câblages morts.
-4. generate_fallback.py --copy <C> --client "<Nom>" [--yes]   ← OBJECTIF 100%
-      → pour chaque tuile ENCORE sur l'ancien (pas d'équivalent 11673), GÉNÈRE une copie de la vieille carte
-        avec substitution de colonnes (substitution_map + generate_card), dédupliquée (1 par vieille carte×
-        client) dans coll 13950. Slots non mappés/conflit restent vieux (colonnes cachées OK ; VISIBLES = pas
-        100%, besoin Gaby). Ne vérifie que l'exécution (render KO réel = erreur SQL ; timeout = on garde).
-5. polish_generated_viz.py --copy <C> --client "<Nom>" [--yes]
-      → substitue la viz du DASHCARD (table.columns/column_settings/series) pour les cartes générées (13950)
-        : titres/ordre/visibilité des colonnes reprennent les bons noms.
+
+Cette commande écrit uniquement le snapshot local ; elle n'écrit rien dans Supabase.
+
+## Iron Law
+
+Une copie n'est complète que si le contrôle live prouve simultanément :
+
+- zéro colonne conversion positionnelle dans toutes les cartes principales ;
+- zéro colonne conversion positionnelle dans toutes les séries associées ;
+- filtre temps canonique et câblages cohérents ;
+- défaut `Client` égal au propriétaire attendu ;
+- aucune erreur de rendu introduite.
+
+Une carte masquée, un SQL conservant les vieux slots ou une différence de valeur suffit à rendre la copie
+résiduelle. Le statut fail-closed est volontaire.
+
+## Pipeline pour un original jamais copié et réellement READY
+
+Exécuter un seul original à la fois :
+
+```bash
+.venv/bin/python scripts/migrate_client.py \
+  --client "<Client>" --dashboards <ORIGINAL_ID> --yes
 ```
-⚠️ **APRÈS génération : les cartes naissent dans 13950 (sandbox /13851/ = NON lisible par les consultants).
-Il FAUT déplacer les cartes migrées (13950 + copies temporal-unit 13885) vers une collection accessible**
-(sous-collection « Conversions migrées » dans la collection client /317/, ou collection partagée pour les
-génériques) — SINON les tuiles s'affichent VIDES pour le consultant (bug vécu Shopinvest Focus Marge).
-cf. `conversion-migration-clients.md` § LEÇON PERMISSIONS. À automatiser dans les outils.
 
-## 4. Bibliothèques & helpers (testés)
-- **`conv_lib.py`** (tests `tests/test_conv_lib.py`, 54/54) : logique pure. Clés : `native_and_tags`,
-  `old/new_conversion_columns`, `resolve_new_card`, `series_display_map`, `map_table_columns` (gère colonnes
-  `_EVOLUTION`, alias REVENUE/CONVERSION_RATE/AVG_REVENUE, dimensions nues CHANNEL/NETWORK/…),
-  `fix_brand_clause`/`strip_brand_atoms`, `card_breakdown`, `kpi_signature`.
-- **`bascule_lib.py`** (tests `tests/test_bascule_lib.py`, 12/12) : `bascule_plan`, `apply_bascule`,
-  `build_temporal_unit_param`, `time_param_payload`.
-- **`convert_generic_temporal.py`** : `convert_card(mb, cid, client, window)` — copie temporal-unit (sandbox
-  13885) de N'IMPORTE QUELLE carte time-driven ; baseline INLINE fiable (`name='<g>'`) ; vérif 4 granularités ;
-  registre `migration/tu-generic-<id>.json` (lu par la bascule) ; idempotent.
-- Brand fix (FAIT sur 11673) : `audit_brand_clause.py`, `fix_brand_clause_cards.py`, `batch_brand_fix.py`,
-  `validate_brand_batch.py`.
+L'orchestrateur :
 
-## 5. Faits techniques NON-OBVIES (pièges qui ont coûté du temps)
-- **Le swap conversions est facile ; la BASCULE du filtre temps est le vrai goulot** : elle est atomique
-  (tout-ou-rien par dashboard) et exige que CHAQUE carte time-driven ait une version temporal-unit. Chaque
-  dashboard a une « longue traîne » d'oddités (Magento, tableaux 2-dim, charts orphelins) → c'est `--auto-prepare`
-  qui la couvre.
-- **pMBQL** : cartes récentes → `dataset_query = {database, lib/type, stages}` ; SQL+tags dans
-  `stages[0].native` / `.template-tags` (PAS `dataset_query.native`). Utiliser `conv_lib.native_and_tags`.
-- **Param client** : certains templates (magento) utilisent un tag `client` SINGULIER type `string/=`
-  (pas `clients`/category) → toujours lire le `widget-type` du tag pour construire le param.
-- **Ancien filtre time_period souvent CASSÉ** (texte) : passer une valeur → 400, non renseigné → granularité
-  aléatoire. Donc pour les baselines on INLINE la granularité (`name='week'`) via /api/dataset, on ne se fie
-  PAS au field-filter.
-- **Recette temporal-unit** : préfixer la CTE `granularity` (sonde l'unité via le tag temporal-unit sur
-  `utils.calendar.date` = field **419201**) + remplacer chaque `LATERAL(... metabase_filters.time_periods ...
-  {{time_period}} ... LIMIT 1)` par `LATERAL(SELECT name FROM granularity LIMIT 1)`. `temporal_units` =
-  `[day,week,month,year]` (comme l'ancien ; pas de quarter sauf besoin).
-- ⚠️ **CTE granularity = fichier `scripts/granularity_cte.sql`** (suivi git). `convert_generic_temporal.py` le
-  lit à l'import. **AVANT 2026-06-22 il lisait `/tmp/granularity_cte.sql`** (artefact volatil) → après vidage
-  de /tmp, `bascule --auto-prepare` crashait (`FileNotFoundError`) dès qu'une carte by-date devait être
-  convertie (corrigé : pointe désormais sur le fichier repo). Si la bascule crashe à l'import, vérifier ce fichier.
-- 🐛 **FIX 2026-06-23 — `LATERAL_RE` débordait sur les cartes à 2+ LATERAL.** La regex repérant le
-  `LATERAL (... metabase_filters.time_periods ...)` était en dotall `.*?` → si une carte avait un AUTRE LATERAL
-  avant (LATERAL brand `textual_boolean`, comparison_windows…), le match partait du 1er LATERAL et avalait la
-  frontière de CTE jusqu'au time_periods → un CTE aval disparaissait → `Object 'FINAL' does not exist`. Corrigé
-  en `[^()]*?` (ne traverse plus de parenthèse). **C'était la cause de la plupart des bascules « bloquées » sur
-  les cartes conversion by-date** (quasi toutes ont un LATERAL brand). Cartes à 1 seul LATERAL non affectées.
-  Témoin : #4854 → copie 49755 (collection témoins 14082), avant/après identique 4 granularités.
-- **Règle BRAND** (validée) : une campagne est « brand » si `campaign_type LIKE '%brand%'` **OU**
-  `TRIM(LOWER(campaign_category)) = 'brand'` (égalité STRICTE — un LIKE attrape « Push Brand To Media » à tort).
-  Appliquée à 1967 cartes de 11673 (0 régression). `conv_lib.fix_brand_clause`.
-- **mb.put/mb.post** renvoient `False` sur erreur HTTP ; passer `'raw'` pour voir le corps. **PUT d'un dash à
-  ONGLETS DOIT inclure `tabs`** (sinon 500) — les 3 scripts le font désormais (onglets supportés).
-- **Index 11673** : `migration/conv-new-index.json` restreint au sous-arbre 11673 (le mode cache polluait).
-  Régénérer : `build_new_conv_index.py --live --root 11673`. (NB : 41329 archivé, index à régénérer.)
+1. crée une copie de staging et pose l'ancre de campagne ;
+2. corrige et vérifie le défaut `Client` ;
+3. réutilise les cartes canoniques compatibles ;
+4. swappe les tables multi-slot sûres ;
+5. bascule le filtre temps et prépare les cartes temporelles ;
+6. génère les fallbacks nécessaires ;
+7. polit les visualisations générées ;
+8. exécute le contrôle final primary + series.
 
-## 6. Décisions produit DÉJÀ tranchées (ne pas re-litiger)
-- Filtre temps : **tout en temporal-unit**, bascule PAR DASHBOARD (jamais 2 filtres temps en final).
-- Tableaux multi-slot : **famille mixte « toutes conversions »** (option b) créée dans 13884 (cartes
-  49098–49129, 10 breakdowns). Filtre de lignes : on garde **`cost != 0`** (le neuf), pas `impressions>0`.
-- Conventions time series : axe X timeseries/no-label/ticks ; `temporal_units` [day,week,month,quarter,year] ;
-  défaut `week` (mais contrainte défaut relâchée — pas bloquant). cf. memory `metabase-timeseries-conventions`.
+Les copies de travail vivent dans la collection de staging **14016**. Les cartes générées et temporal-unit
+vivent dans la collection technique durable et partagée **14115**. Elles peuvent alimenter plusieurs
+dashboards, y compris de clients différents : elles ne doivent jamais être déplacées par dashboard. La
+promotion vérifie que leurs dépendances restent lisibles.
 
-## 7. Limites connues / reste à faire
-- **Graphes multi-conversion** (2+ conversions sur un même graphe) et **tableaux 2-dimensions** : pas
-  d'équivalent propre → restent sur l'ancien système (sans casse) ou débranchés du filtre temps.
-- **Cartes « filter choice »** (sélecteur de métrique, ex. card 87) : transform OK mais convert_card/reuse ne
-  savent pas les VÉRIFIER (param sélecteur requis → baseline vide) → restent sur l'ancien. À outiller.
-- **ONGLETS : SUPPORTÉS** (2026-06-13). Les 3 scripts gèrent `tabs` (PUT inclut `tabs`, dashcards gardent
-  `dashboard_tab_id`) ; le reuse apparie source↔copie par INDEX d'onglet (ids différents). migrate_client.py
-  les passe aussi.
-- **Appliquer aux ORIGINAUX** : tout est sur copies. Définir/faire l'étape finale (appliquer sur l'original
-  ou repointer le partage Nanga) APRÈS validation consultant — PAS encore fait.
-  **Décision 2026-06-17 : le partage / repoint Nanga reste MANUEL (fait par les GM, pas d'automatisation) —
-  cf. memory `dashboard-app-sharing`. Étape finale prod = appliquer sur les ORIGINAUX ; le partage = GM.**
-- **GA4 / analytics.*** : ~242 tuiles bloquées amont (pipeline data).
-- **15 cartes cassées** (orphelines, 0 dashboard) repérées dans 11673 → archivage proposé, en attente GO.
-- Subagents/workflows : quota hebdo (reset ~ven 21h) — sinon travailler inline.
+Garde-fous :
 
-## 8. Repères Airtable / mapping
-- Mapping = `migration/conv-client-mapping.json` (régénérable). Source : base **apptzpE1FqCMGH0dw**, table
-  **tbliHOIPYGJCvLvas** (champs : `client` linked, `type`=slot positionnel `fldKwKgjtULTSjX6g`,
-  `new_type` `fldAOmPth76Vsd7AX`, event `fld6VHk3nAgHmRSP7`, platform `fld1VYy5IjpCPSsus`).
-- `conv_lib.build_client_mappings` flague `__CONFLICT__` quand un slot a plusieurs `new_type` distincts.
-  Re-vérifier en LIVE avant chaque client (Gaby corrige au fil de l'eau).
+- ne jamais lancer deux migrations en parallèle : le tracker global n'a pas de verrou ;
+- ne jamais passer plusieurs originaux dans la même invocation ;
+- si l'orchestrateur échoue après création, reprendre **la même copie** avec les étapes ciblées ;
+- ne jamais relancer l'orchestrateur pour le même original, au risque de créer une copie concurrente ;
+- ne jamais travailler sur l'original ;
+- en cas d'échec, restaurer uniquement le dashboard ou la copie en cours depuis son snapshot. Ne jamais
+  annuler les succès antérieurs du lot.
 
-## 9. Prochaine action
-**MAJ 2026-06-17.** Étapes 1+2 FAITES : PN (validé Lucas) + 4 clients Gaby (Goodiespub, Father&Sons,
-Shopinvest, Rivadouce) migrés, **rétro-tagués `[conv-2026-06]`**, suivis dans
-`docs/conversion-migration-tracker.md` (18 lignes). **Partage app Nanga = MANUEL (GM), pas d'automatisation**
-(prototype construit puis rollback complet — cf. memory `dashboard-app-sharing`).
+Pour une copie existante résiduelle, commencer par lire ses causes dans `accounting-copies.json` et les notes
+du tracker. N'appliquer que l'étape ciblée qui résout cette cause, puis refaire le contrôle live complet.
 
-**ÉTAPE 3 = migrer les ~92 clients restants (ads `global.*`).** Triage préflight (`conv-preflight.csv`) :
-**49 prêts** (0 conflit, mappable — démarrer par les petits propres : Toploc, 100% Print, Figaret,
-France Toner, Jerome Dreyfuss), **9 à compléter Airtable** (no_client_mapping → Gaby), **34 lourds**
-(conflits/unmapped → Gaby). Dérouler via `migrate_client.py` (auto-tag + écrit le registre). En parallèle :
-demande groupée Gaby (9 Airtable + conflits restants des 5 faits : F&S slot 1, Rivadouce slots).
+## Régénérer les preuves
 
-**GA4** : bloqué amont (pipeline data en cours d'ajout des colonnes nommées à `analytics.*`). Les 18 migrés
-ont **0 tuile GA4**. Catch-up des déjà-migrés tracké en `ga4_pending` : PN #14049, Rivadouce #15372,
-Shopinvest #863 (Goodiespub + F&S = aucun GA4). **Archivage des anciens** : `archive_superseded.py` après
-validation consultant (opt-in `archive_old:true` par ligne ; dry-run ; réversible). cf. §10.
+Après une modification live :
 
-## 10. Ancre de campagne, suivi & archivage des anciens (2026-06-17)
-- **Ancre `[conv-2026-06]`** = marqueur de **CAMPAGNE** (pas date de création). Ajoutée en **suffixe** au nom
-  de CHAQUE copie par `migrate_client.py` (via `conv_tracker.apply_tag`). Survit à la promotion (quand on
-  droppera le préfixe `[TEST conv]`). Rôle : marqueur humain + **garde-fou** anti-archivage.
-- **Tracker / registre** = `migration/conv-migration-tracker.json` (vue lisible :
-  `docs/conversion-migration-tracker.md`, régénérée par `conv_tracker.py --render`). 1 ligne par dashboard
-  migré : `client, dashboard, copy_id, original_id, tagged, status, archive_old, old_archived, notes`.
-  `migrate_client.py` y consigne chaque paire **ancien→copie** automatiquement. Lib pure testée :
-  `tests/test_conv_tracker.py` (9/9). Seedé avec les copies déjà faites (PN + 4 clients Gaby).
-- **Archivage des anciens = delete-by-PRESENCE (jamais par absence).** `scripts/archive_superseded.py`
-  (dry-run par défaut ; `--yes` applique) archive UNIQUEMENT les originaux des lignes marquées
-  **`archive_old: true`** (opt-in explicite, à poser à la main après validation), réversible
-  (PUT `archived:true`), + garde-fou : refuse tout nom portant `[conv-2026-06]`. → on n'archive jamais
-  « tout ce qui n'a pas le tag ».
-- **Workflow** : migrer (auto-tag + registre) → consultant valide → poser `archive_old:true` sur la ligne →
-  `archive_superseded.py` (dry-run puis `--yes`). Le **partage app reste MANUEL (GM)** — cf. memory
-  `dashboard-app-sharing`.
+```bash
+.venv/bin/python scripts/final_accounting.py
+.venv/bin/python scripts/build_conversion_manifest.py \
+  --worklist migration/worklist.json \
+  --tracker migration/conv-migration-tracker.json \
+  --iron-state migration/accounting-copies.json \
+  --client-attribution migration/dashboard-client-attribution.json \
+  --copy-decisions migration/canonical-copy-decisions.json \
+  --output migration/conversion-manifest.json
+```
+
+Vérifier ensuite :
+
+```bash
+jq '.summary' migration/conversion-manifest.json
+jq '{clients,dashboards,visible_100,residu,unknown,blockers_consultant,coverage_cards}' \
+  migration/accounting-final.json
+```
+
+Le snapshot attendu au 2026-07-16 est :
+
+- roadmap : 136 complete, 240 residual, 53 never-copied, 0 unknown ;
+- topologie : 16 multiple-copies, 16 réconciliées, 0 non résolue, 17 copies superseded ;
+- copies in-scope : 138 complete, 255 residual, 0 unknown ;
+- accounting brut : 73 clients, 394 copies, 138 true-100, 256 résiduelles, 0 inconnue, 563 blockers,
+  377 coverage.
+
+Ces chiffres ne varient pas du seul fait d'une promotion : l'Iron Law décrit le contenu de la copie, pas sa
+collection Metabase.
+
+## Catch-up clos
+
+Le lot des 25 READY initiaux est terminé : **15 complete, 9 residual, 1 doublon exact exclu**.
+
+- Chilowé `9933→27797` et `21309→27798` sont complete.
+- Superdiet `19890→27796` est residual : les cartes `52448`, `52450`, `52453` gardent les slots 1–6.
+- Chilowé `21314` est le doublon exact hors scope de `9933` ; ne pas lui créer une copie.
+- Les 53 jamais copiés restants sont 25 blocages structurels + 28 absences de mapping exploitable.
+
+## Réconciliation multi-copies close
+
+Les 16 topologies multi-copies sont réconciliées : une copie canonique et toutes les copies superseded sont
+enregistrées explicitement pour chacune. La liste auditable est dans le manifeste :
+
+```bash
+jq -r '.dashboards[]
+  | select(.copy_status == "multiple_copies")
+  | [.original_id, .client, .copy_reconciliation_status, .canonical_copy_id,
+     (.superseded_copy_ids | join(",")), .iron_law_status]
+  | @tsv' migration/conversion-manifest.json
+```
+
+Le fichier `migration/canonical-copy-decisions.json` contient 16 décisions exhaustives. Une copie reste
+promouvable uniquement si son état canonique est true-100 et si le préflight live complet réussit.
+
+## Promotion — état live certifié
+
+Les **134 promotions uniques** sont prouvées par trois snapshots, tous `APPLIED`, en mode `isolated`, sans
+échec :
+
+| Snapshot | Promotions certifiées |
+|---|---:|
+| `migration/promotion-snapshot-20260715T203055323521Z.json` | 129 |
+| `migration/promotion-snapshot-20260715T214816686551Z.json` | 1 — copie `26791` |
+| `migration/promotion-snapshot-20260715T224944247792Z.json` | 4 — originaux `329`, `863`, `15865`, `22860` |
+
+Le dernier snapshot porte `selected_original_ids=[329,863,15865,22860]`,
+`excluded_original_ids=[18406]`, quatre succès `VERIFIED` et `failures=[]`. Le mode isolé est une exigence :
+si une copie échoue, elle seule est restaurée et mise de côté ; toutes les promotions déjà vérifiées sont
+conservées. Il n'existe pas de rollback global du lot.
+
+Le dernier plan live, `migration/promotion-plan-final-validation.json`, a le hash
+`sha256:33a2d389083eaa3620d76c1b518c0ac091ec5cf0d1fb45e9258c7810184a0d32` et contient **1 READY pour
+429 BLOCKED**. Le seul READY est `18406→27744`, mais il ne doit pas être promu avec le contrat actuel : sa
+Dashboard Question interne `52308` (`can_delete=false`) suit automatiquement la collection du dashboard dans
+Metabase. Cela viole la règle « cards unchanged ». Ne pas déplacer cette carte manuellement et ne pas
+contourner le fingerprint.
+
+Règles permanentes pour toute reprise ultérieure :
+
+1. figer un accounting et un manifeste à jour ;
+2. promouvoir uniquement une copie canonique true-100 dont le préflight live est intégralement vert ;
+3. laisser toute candidate bloquée en place et la revoir séparément en fin de lot ;
+4. laisser les dépendances partagées dans `14115` et en maintenir la lisibilité ;
+5. laisser les originaux et les copies superseded intouchés ;
+6. faire repartager manuellement les nouveaux liens Nanga par les GM.
+
+Les résiduelles, les inconnues et les copies non canoniques ne sont jamais promues.
+
+## Bascule temps et cartes partagées — dernières preuves
+
+Quatre bascules temps ont réussi leur application, leurs postconditions et `verify_pipeline` :
+
+| Copie | Snapshot |
+|---:|---|
+| `26754` | `migration/bascule-snapshot-26754-20260716-003151-520232.json` |
+| `26789` | `migration/bascule-snapshot-26789-20260716-003405-211675.json` |
+| `27058` | `migration/bascule-snapshot-27058-20260716-003534-824173.json` |
+| `25836` | `migration/bascule-snapshot-25836-20260716-003652-531317.json` |
+
+Les cartes temporal-unit partagées correspondantes sont toutes en collection technique durable `14115` :
+
+- `50850→52626` ;
+- `51789→52628` ;
+- `51796→52629` ;
+- `1853→52630` ;
+- `49309→52631`.
+
+La copie `26791` utilisait la dépendance personnelle `14632`. Elle a été clonée vers la carte partagée
+`52594` en `14115`, puis le dashboard a été recâblé, vérifié et promu.
+
+Une exception temps reste volontairement bloquée : Superdiet `18768→26804`. La carte `50933` diverge au
+grain `day`; l'équivalence des valeurs n'est donc pas prouvée. Ne pas forcer la bascule.
+
+## Historique utile — non opérationnel
+
+- Juin 2026 : le pipeline a acquis le support des onglets, des tables multi-slot, des cartes temporelles, du
+  fallback généré et des comparaisons de valeurs.
+- Le premier balayage a produit plusieurs générations de copies ; c'est la raison des 16 topologies multiples.
+- La décision produit finale est de promouvoir les copies validées et de conserver les originaux inchangés.
+- Le 15 juillet, le mapping a été basculé vers Supabase, l'accounting a été rendu fail-closed, le catch-up a
+  été clos et 130 promotions ont été certifiées.
+- Le 16 juillet, quatre bascules temps supplémentaires et leurs promotions ont été certifiées ; le préflight
+  final ne laisse que `18406→27744` READY, maintenu non promu par la règle cards-unchanged.
+
+Les anciennes recettes, anciens totaux et statuts saisis dans les journaux datés sont des éléments de contexte,
+pas des instructions. Toujours repartir des artefacts live.

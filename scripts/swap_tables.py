@@ -12,11 +12,13 @@ Usage :
   python3 scripts/swap_tables.py --copy 25632 --client "Pro Nutrition" --yes
 """
 import argparse, json, sys
+from datetime import datetime
 from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
 import conv_lib
 import bascule_lib
+import special_cards_lib as scl
 from migrate_dashboard_full import connect, load_inputs, _dcs
 
 # famille mixte 11673/13884 : breakdown -> (carte « toutes conversions », dimension, temporal-unit ?)
@@ -49,7 +51,25 @@ def resolve_table_target(card):
     return MIXED_FAMILY[bd[0]]
 # métriques nommées hors slots positionnels (best-effort, tranché par la vérif valeur)
 NAMED_EXTRA = {"ADD_TO_CARTS": "CURRENT_ADD_TO_CARTS_NEW", "CAC_ATC": "CURRENT_ADD_TO_CARTS_NEW_CAC"}
+# Colonnes DÉJÀ nommées dans le vieux tableau (slot migré en place, ex. slot 0 → PURCHASES) : la carte
+# mixte les expose sous CURRENT_<col>. On les mappe explicitement pour ne PAS les perdre au swap.
+for _name, (_cnt, _val) in conv_lib.NAMED_COL.items():
+    if _cnt:
+        NAMED_EXTRA.setdefault(_cnt.upper(), f"CURRENT_{_cnt.upper()}")
+    if _val:
+        NAMED_EXTRA.setdefault(_val.upper(), f"CURRENT_{_val.upper()}")
 DC_FIELDS = ("card_id", "row", "col", "size_x", "size_y", "series", "parameter_mappings", "visualization_settings", "dashboard_tab_id")
+
+
+def load_special_ids():
+    """Cartes de remplacement déjà migrées, à ne jamais retraiter comme des tables legacy."""
+    entries = []
+    for path in (REPO / "migration").glob("tu-generic-*.json"):
+        try:
+            entries.append(json.loads(path.read_text()))
+        except Exception:
+            pass
+    return scl.replacement_ids(entries)
 
 
 def card_rows(mb, cid, params, dim_col, norm=None):
@@ -91,11 +111,17 @@ def main():
                     help="swappe malgré des écarts de VALEURS connus/validés (cosmétique libellé/casse, "
                          "campagnes edge cost!=0 vs impressions>0). Bloque toujours sur exécution KO / "
                          "colonnes non mappées.")
+    ap.add_argument("--force-coverage", action="store_true",
+                    help="policy user « couverture, on s'en fout des écarts » : CACHE les colonnes non "
+                         "mappables (ex. *_BRAND_EXCLUDED absentes de la carte mixte) au lieu de bloquer, "
+                         "et accepte les écarts de valeur. Ne bloque QUE sur exécution KO (jamais de SQL "
+                         "cassé). Cible = tables larges legacy sur copies staging.")
     ap.add_argument("--yes", action="store_true")
     args = ap.parse_args()
     mb = connect()
     mapping_all, _ = load_inputs()
     cmap = {int(k): v for k, v in mapping_all.get(args.client, {}).items()}
+    special = load_special_ids()
 
     dash = mb.get(f"/api/dashboard/{args.copy}")
     base = [{"type": "category", "value": [args.client], "target": ["dimension", ["template-tag", "clients"]]},
@@ -105,6 +131,9 @@ def main():
     new_dcs, report = [], []
     for dc in _dcs(dash):
         cid = dc.get("card_id")
+        if cid in special:
+            new_dcs.append(dc)
+            continue
         old_card = mb.get(f"/api/card/{cid}") if cid else None
         target = resolve_table_target(old_card) if old_card else None
         if not target:
@@ -132,6 +161,7 @@ def main():
             if cand and cand in new_cols:
                 m[col] = cand
                 unmapped.remove(col)
+        lossy_values = conv_lib.lossy_count_only_value_columns(unmapped, cmap)
         # dimension d'alignement = ancienne colonne mappant vers dim_new (sinon 1ère visible)
         old_dim = next((k for k, v in m.items() if v == dim_new), old_vis[0] if old_vis else None)
 
@@ -152,10 +182,12 @@ def main():
             new_params.append({"type": "temporal-unit", "value": "week",
                                "target": ["dimension", ["template-tag", "time_period"]]})
         nfn = conv_lib.normalize_period_label if is_temporal else None  # aligne les formats de période
-        orows = card_rows(mb, cid, old_params, old_dim, nfn)
-        nrows = card_rows(mb, target_id, new_params, dim_new, nfn)
+        orows = None if args.force_coverage else card_rows(mb, cid, old_params, old_dim, nfn)
+        nrows = None if args.force_coverage else card_rows(mb, target_id, new_params, dim_new, nfn)
         bad = []
-        if orows is None or nrows is None:
+        if args.force_coverage:
+            pass  # --force-coverage : on saute la vérif valeur ET ses requêtes (écarts assumés)
+        elif orows is None or nrows is None:
             bad.append(("(exécution)", "(exécution)", None, None))
         else:
             labels = set(orows) & set(nrows)
@@ -175,15 +207,21 @@ def main():
 
         # blocage DUR : exécution KO toujours ; colonnes non mappées seulement pour une table à colonnes
         # CHOISIES (table implicite -> on MASQUE les non mappées = slots positionnels inutilisés).
-        hard = (bool(unmapped) and not implicit_cols) or any(b[0] == "(exécution)" for b in bad)
+        fc = args.force_coverage
+        # --force-coverage : les colonnes non mappables sont CACHÉES (pas dans `m` → exclues du nouveau
+        # table.columns), pas bloquantes ; les valeurs sans cible (lossy) idem. Seule l'exécution KO bloque.
+        hard = (bool(lossy_values) and not fc) or (bool(unmapped) and not implicit_cols and not fc) or any(
+            b[0] == "(exécution)" for b in bad
+        )
         value_diffs = [b for b in bad if b[0] != "(exécution)"]
         # DÉCISION user : tout ÉCART DE VALEUR bloque -> REVUE (on ne force jamais un écart réel ;
-        # --accept-diffs ne contourne plus les valeurs). unmapped d'une table implicite = colonnes
-        # positionnelles masquées, pas un écart.
-        blocked = bool(hard) or bool(value_diffs)
+        # --accept-diffs ne contourne plus les valeurs). SAUF --force-coverage (« on s'en fout »).
+        # unmapped d'une table implicite = colonnes positionnelles masquées, pas un écart.
+        blocked = bool(hard) or (bool(value_diffs) and not fc)
         status = "OK" if (not bad and not unmapped) else ("À REVOIR (écart valeur)" if value_diffs else "PARTIEL")
         report.append({"card": cid, "target": target_id, "mapped": len(m), "unmapped": unmapped,
-                       "bad": bad, "status": status, "blocked": blocked, "name": old_card.get("name")})
+                       "lossy_values": lossy_values, "bad": bad, "status": status,
+                       "blocked": blocked, "name": old_card.get("name")})
         if blocked:
             new_dcs.append(dc)  # garde l'ancien tableau
             continue
@@ -230,6 +268,8 @@ def main():
         print(f"  {str(r['name'])[:34]:34} {verb}{flag}  ({r['mapped']} cols mappées)")
         if r["unmapped"]:
             print(f"        NON mappées (bloquant): {r['unmapped']}")
+        if r["lossy_values"]:
+            print(f"        ⛔ mapping count-only, valeurs sans cible: {r['lossy_values']}")
         for b in r["bad"]:
             print(f"        {'•' if r['status']=='FORCÉ' else '⛔'} {b[0]} -> {b[1]} : {b[4] if len(b)>4 else '?'} cellule(s) ≠  (ex. {b[2]} vs {b[3]})")
     swaps = [r for r in report if not r["blocked"]]
@@ -238,15 +278,19 @@ def main():
         return
     if not swaps:
         print("\nAucun tableau swappable — rien à faire."); return
-    (REPO / "migration" / f"swap-tables-snapshot-{args.copy}.json").write_text(
-        json.dumps(_dcs(dash), ensure_ascii=False))
+    snap_dir = REPO / "migration" / "swap-table-snapshots"
+    snap_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    snap = snap_dir / f"dashboard-{args.copy}-{stamp}.json"
+    snap.write_text(json.dumps(dash, ensure_ascii=False, indent=1))
     put_body = {"dashcards": new_dcs}
     if dash.get("tabs"):
         put_body["tabs"] = dash["tabs"]
     res = mb.put(f"/api/dashboard/{args.copy}", "raw", json=put_body)
     if res.status_code != 200:
         print(f"⛔ PUT échoué: {res.status_code} — {res.text[:300]}"); sys.exit(1)
-    print(f"\nPUT {args.copy}: 200 OK ({len(swaps)} tableaux swappés, snapshot pris)")
+    print(f"\nPUT {args.copy}: 200 OK ({len(swaps)} tableaux swappés)")
+    print(f"Snapshot avant swap : {snap}")
 
 
 if __name__ == "__main__":

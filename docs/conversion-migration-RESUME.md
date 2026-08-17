@@ -1,173 +1,234 @@
-# REPRISE — Migration conversions étape 3 (handoff 2026-06-24)
+# REPRISE — Migration des dashboards conversions
 
-> Point d'entrée pour un **agent frais** qui reprend le chantier. Lis ce fichier EN ENTIER d'abord.
+> État live consolidé au **2026-07-16**. Ce document est le point d'entrée opérationnel.
 
-## 🏁 ÉTAT FINAL 2026-06-30 (lire en PREMIER — le gros est fait)
-**Tout le périmètre migratable a été balayé** (lots 1-10 + streams). Sur COPIES (collection 14016, rangées en
-sous-collections par client). **370 dashboards / 73 clients · 173 visible-100% (47%) · 197 résidu.** Détail +
-catégorisation = `docs/conversion-migration-PROGRESS.md` § ÉTAT FINAL + `migration/accounting-final.json`.
+## ⚠️ Correction 2026-07-16 (audit + fixes) — À LIRE EN PREMIER
 
-**Outillage MÛR** (suite 221) : brique b + **cascade self-safe** (jamais de carte KO ; fallback substitué-seul),
-**garde-fou valeur** (nommé≠positionnel → À REVOIR), **DQ → deep copy auto**, **pré-check attribution** (worklist
-auditée : 74 dashboards mal attribués corrigés), **filtre clients actifs** (Airtable `apprhVP5LBAQ8jjsK`/
-`tblbn4hWORfpQ8DiQ`, count>0).
+Un audit indépendant (détecteur ré-implémenté, scan live, croisement Airtable/Supabase) a invalidé
+plusieurs chiffres publiés plus bas par les runs antérieurs. **Les chiffres ci-dessous dans « Situation en
+une minute » sont ceux d'AVANT correction ; se référer d'abord à ce bloc.**
 
-**CE QUI RESTE = 3 paniers nets** (plus de bug outil) :
-- 👤 **80 décisions consultant / 33 clients** → `migration/HANDOFF-consultants.csv` (mâché) ⇄ `parse_consultant_answers.py`.
-- 🔧 **Couverture NOUS** (tables larges complexes / KPIs-evo / benchmark) → cascade plus robuste ou **carte
-  générique dédiée** (`migration/coverage-cards.json`).
-- 🧪 **Data-équipe** (écart valeur) → `migration/CONVERSIONS-A-REVOIR-valeur.csv`.
+**Bug corrigé (racine).** `conv_lib` masquait les littéraux SQL mais PAS les commentaires. Une apostrophe
+française dans un `-- commentaire` ouvrait un faux littéral qui rendait invisible 40–66 % d'une requête. Le
+MÊME masque servait au migrateur ET au vérificateur → une carte non migrée était certifiée « propre ».
+Corrigé (`old_conversion_columns`/`new_conversion_columns`/`apply_substitution` → masque commentaires-aware
+par type de contenu). 4 tests de régression ajoutés, **453 tests passent**.
 
-**MODÈLE PROD (corrigé user 2026-06-30)** : les **copies de 14016 SONT la prod-à-venir** — on ne refait RIEN sur
-les originaux. Une fois **100% propre** (toutes les cartes migrées + 0 erreur), on **déplace les copies dans les
-collections clients** → elles deviennent la prod. ⚠️ **DÉCISION OUVERTE Nanga** : déplacer = NOUVEAUX ids de
-dashboard → les liens/partages Nanga (qui pointent sur les anciens originaux) sont à **re-partager (GM, manuel)** ;
-alternative = écraser le contenu des originaux pour garder les ids (mais = « refaire », écarté par l'user). À trancher.
-**Handoff conversions → Lucas (team lead)** qui centralise tous ces besoins (pas d'envoi direct aux consultants).
-⚠️ **Clutter deep-copy** : les dashboards à Dashboard Questions ont été deep-copiés → ~308 cartes dupliquées
-rangées dans la sous-collection technique 14016/14280 ; elles font partie de la prod-à-venir (référencées par
-leurs dashboards) → à déplacer AVEC eux le moment venu (ou repenser le traitement DQ pour éviter les doublons).
+**Vrai périmètre (clients ACTIFS uniquement, hors tout-Gaby) :**
 
-## 0. À lire (dans l'ordre)
-1. **Ce fichier.**
-2. `docs/conversion-migration-PROGRESS.md` — où on en est, par client + lots parallèles (Iron Law).
-3. `docs/conversion-migration-ANOMALIES.md` — journal append-only des bugs trouvés + décisions user (lots 1 & 2).
-4. `docs/conversion-migration-PARALLEL.md` — recette du harnais orchestrateur + subagents.
-5. `docs/conversion-migration-clients.md` — détail vivant (§Étape 3 + « cartes partagées spéciales » + Iron Law).
-6. `docs/conversion-migration-HANDOFF.md` — chaîne d'outils, pièges techniques.
-7. `memory/conv_migration_etape3.md` (+ `memory/conversion_migration.md` = log long).
+| Vue | Corrigé (live, détecteur réparé) |
+|---|---:|
+| Cible actionnable (active, hors tout-Gaby) | **368** |
+| Complets (true-100 **live-vérifiés**) | **111 — 30 %** |
+| Résiduels | **226** |
+| Jamais copiés | **31** |
+| In-scope sortis — clients devenus inactifs | 46 originaux (**20 copies archivées** ce jour) |
+| In-scope sortis — tout-Gaby actifs (0 slot mappé) | 15 |
 
-## 1. Objectif + LA RÈGLE
-Migrer A→Z **tous les clients actifs (~98)** : remplacer les conversions **positionnelles** (`CONVERSIONS`,
-`CONVERSIONS_1..19`, `CONVERSION_*_VALUE`, `CAC_*`) par les **nommées** (`PURCHASES`, `CUSTOM_CONVERSIONS_1..15`,
-`LEADS`, `MARKETING_QUALIFIED_LEADS`…) déjà dispo dans les tables `global.*` (et `analytics.*` pour GA4), via les
-cartes génériques (collection 11673 + famille mixte 13884), puis basculer le filtre période en **temporal-unit**.
+**Corrections live appliquées le 2026-07-16 :**
+- `26458` Komilfo **dépromu** (carte 48435 encore positionnelle, slot 0 contesté Airtable≠Supabase) →
+  retour staging `14195`, snapshot `migration/depromote-snapshot-26458.json`.
+- `26739` GTT carte `52242` **réparée** (branche B « All » jamais réécrite ; slot 0 = Purchases par décision
+  consultant) → 0 positionnel, snapshot `migration/fix-snapshot-card-52242.json`.
+- **20 copies `[conv-2026-06]` archivées** (8 clients inactifs : Virgil, Fauré Le Page, Exaprint, G-Heat,
+  Merci Walter, Osée, Lutèce Cosmetics, 100% Print). Réversible, originaux intacts,
+  snapshot `migration/archive-snapshot-inactive-clients.json`.
 
-🔒 **IRON LAW (non négociable, user 2026-06-24)** : **AUCUNE tuile contenant des conversions ne reste sur
-l'ancien système.** Un dashboard n'est « fini » que si **0 tuile conv sur l'ancien** (sinon retirer les colonnes
-positionnelles cassera tout). **Finir chaque dashboard à 100% avant le suivant ; ne JAMAIS commencer un
-dashboard qu'on ne peut pas finir.**
+**Claims antérieurs FAUX ou trompeurs :** « 138 true-100 » (réel 111 après scan réparé + périmètre),
+« 429 en scope » (368 actionnable), « 76 % au niveau tuile » (≈60 %, chiffre absent du code),
+« Airtable totalement déprécié » (contient encore ~41 réponses exploitables — le garder en lecture,
+voir §Mapping), « 563 blockers consultant » (dette réelle ≈113 slots, le reste = slots absents = tuiles
+mortes à retirer). Le filtre clients-actifs **n'a jamais existé dans le code** : il vivait dans un JSON
+gitignoré édité à la main → à mettre dans le code (`build_conversion_manifest.py`).
 
-Autres règles d'or : **COPIES d'abord** (jamais les originaux — les liens Nanga pointent dessus ; copie
-SHALLOW `is_deep_copy:false`). **Ancre `[conv-2026-06]`** en suffixe du nom. **Mapping = Airtable, re-vérifié
-LIVE par client.** **Slots non mappés / conflits = STOP → Gaby** (on n'invente jamais la cible). Réponds au
-user en **français, simple et visuel** ; pas de commit sans demande.
+## Ajout 2026-07-16→17 (drop des branches CASE non mappées)
 
-## 2bis. MAJ 2026-06-26 — HARNAIS PARALLÈLE LANCÉ + OUTILLAGE DURCI (lire en premier)
-**Outillage commité** (branche `feat/conv-migration-tooling-hardening`, suite **204 tests verts**).
-2 lots de validation passés sur COPIES (collection **14016**) via subagents → merge central :
-- **Lot 1** : AMV Assurance (26424), Exaprint (26427) = **visible-100%** ; Be Radiance (26428),
-  Ecopia (26426) = ⏳ Gaby (slots non mappés/conflit, au CSV).
-- **Lot 2** : **Komilfo** (26458/26463) & **Osée** (26460/26465) = **visible-100%** ; Toploc (26457) &
-  Solarock (26459/26462) = résidu **table large** ; CapCar (26461/64/66) = ⏳ Gaby.
-- **8 bugs outillage corrigés** (cf. ANOMALIES) : swap None-dim, visualizer vide, préfixe [migré], titre
-  corrompu MAJ (`substitute_viz`), bascule `string/=`, titre générique→nommé, `render_ok` faux-positif,
-  **tables larges** (swap s'enclenche : old_vis vide → result_metadata, non-mappées masquées, bonus rempli).
-- **2 décisions user TRANCHÉES** : (1) tout **écart de valeur bloque → REVUE** (`--accept-diffs` ne force
-  plus ; la revue montre la colonne+chiffres, ex. Toploc « CONVERSIONS_1→CURRENT_LEADS 38 vs 25 »).
-  Routage : mapping vraiment différent → consultant ; bug data → user (= équipe data). (2) titre tuile
-  migrée = conversion nommée si titre générique, libellé métier préservé.
-- **Lot 3 (2026-06-27)** : Dedikazio (26490), Dermalogica (26491), Shining (26492), TuneCore (26494),
-  Zeplug (26493), Violette_FR (26495 GA4 + 26496 Global). Merge OK (tracker 43→50).
-- **🧩 BRIQUE B CODÉE + RÉ-APPLIQUÉE (2026-06-27)** : `conv_lib.drop_conversion_selects` (pur, 5 tests TDD,
-  suite **209**) retire du SQL généré les slots NON mappés (Iron Law = niveau **SQL**, pas affichage ; « masquer »
-  ne suffisait pas). Câblée dans `migrate_dashboard_full.generate_card` → **les futurs lots passent en 1 passe**.
-  **Self-safe** : no-op sur les cartes **KPIs-evolution** (réfs dérivées multi-CTE / CASE multi-lignes) → zéro
-  régression. Lot 3 : dashboards visible-100% **2 → 4** (+Zeplug, +Violette GA4) ; résidu restant = **5 tuiles,
-  uniquement KPIs-evolution / 2-dim** = le **follow-on** (parseur cascade OU carte générique « par X — KPIs
-  evolution »). Détails : ANOMALIES « BRIQUE B » + PROGRESS lot 3.
-- **Lot 4 (2026-06-27/28)** : Lutèce Cosmetics, France Toner, Pulse Protein, My Blend, Sports d'époque
-  (Vestiaire = exclu, voir ci-dessous). **7/21 dashboards visible-100% en 1 passe** (brique b active). Résidu
-  dominant = **KPIs-evolution** (prévalence confirmée).
-- **🧩 BRIQUE B CASCADE + 🛡️ GARDE-FOU VALEUR codés (2026-06-28, suite 217)** — détails ANOMALIES « 2026-06-28 » :
-  · `conv_lib.drop_conversion_selects` = parseur SELECT-aware + cascade d'alias (gère KPIs-evolution multi-CTE /
-    CASE multi-lignes / multi-dim). Self-safe (no-op si réf pendante). Vérifié : My Blend 5940 KPIs-evo → clean.
-  · `generate_fallback.value_review` + `conv_lib.value_diffs` = **garde-fou valeur** (policy user) : écart
-    nommé≠positionnel → carte gardée sur l'ancien + « ⚠️ À REVOIR ». Vérifié : TuneCore bloqué, My Blend/Violette migrés.
-- **🚫 EXCLUS du balayage (user 2026-06-28)** : **Vestiaire Collective** + **Polène** (worklist 100→98 ;
-  copies Vestiaire lot 4 archivées). memory `conv-migration-special-no-copy-clients`.
-- **À FAIRE ENSUITE** : prochain lot (4-6 clients NON faits) dans `migration/worklist.json` (déjà faits :
-  AMV, Exaprint, Be Radiance, Ecopia, Komilfo, Osée, Toploc, Solarock, CapCar, Dedikazio, Dermalogica, Shining,
-  TuneCore, Zeplug, Lutèce, France Toner, Pulse Protein, My Blend, Sports d'époque). Recette PARALLEL, valider
-  lot par lot. ⚠️ le **Bash auto-backgroundé** les runs longs → pour ≥5 dash, découper ou reprendre en central
-  le dashboard manquant. Toploc/TuneCore (slot nommé≠positionnel) = arbitrage data. **Re-appliquer cascade +
-  garde-fou aux lots 1-4 déjà faits** = optionnel (les nouveaux lots en profitent en 1 passe).
+Nouvelle brique `conv_lib.drop_conversion_case_branches` (+ garde-fou `case_branch_prune_cleans`, câblée dans
+`generate_card`/`generate_fallback`) : retire les branches `WHEN … THEN <slot positionnel>` d'un CASE quand le
+slot est **non mappé**, sans supprimer l'item = la métrique (ce que faisait à tort `drop_conversion_selects` →
+carte cassée). Cible les cartes **distribution** (bar/pie « Conversions distribution ») et **sélecteur**
+(« filter choice »). **3 dashboards distribution nettoyés + vérifiés live, en STAGING (non promus)** : BYmyCAR
+`26567`, EVS `27079`, Les petits culottés `27020`.
 
-## 2. État au 2026-06-24 (avant le harnais — historique)
-- **1 client complet** (Iron Law) : 100% Print. **2 dashboards true-100%** : copies 26127 (100% Print), 26197 (Cica Home).
-- Partiels (résidus conv sur l'ancien, à finir) : Braxton (26193), Absolut Cashmere (26164), Cica PMax (26198).
-- Archivés / à refaire en unités complètes : Cica Focus 6846 (#87), Cica Breakdowns 11249 (segment), Chilowé 21310/21311.
-- **Staging copies** : collection **14016**. **Témoins cartes spéciales** : collection **14082**.
-- **Cartes spéciales PRÊTES** (prouvées, sans table) :
-  - **#87** « Social ad metric (filter choice) by date » → **49788** : Text variable + menu nommé (custom list,
-    `values_query_type=list`, single-select) + filtre temporal-unit. (141 dashboards concernés.)
-  - **#4854** « Impression share by product & date » → **49755** : temporal-unit (non-conversion).
-  - GA4 témoin → **49623** (preuve mécanique GA4).
-- **Registre** : `migration/tu-generic-87.json` (→49788) + `tu-generic-4854.json` (→49755) écrits (la bascule les prend).
+**⚠️ Leçon de sécurité (régression trouvée + corrigée)** : le drop pur (branches **+ items SELECT**) BLANCHIT
+les cartes mono-métrique des clients **sans mapping** (ex. Be Radiance : « Main conversions »/« CAC » → carte
+vide, « clean » Iron Law mais BLANCHE). L'Iron Law ne voit pas le blanc. Le scope a donc été **réduit au
+pruning de branches CASE seul** (le CASE survit avec ses branches mappées). Tables larges, smartscalars,
+sélecteurs à items CTE positionnels **restent sur l'ancien** (positionnel visible, jamais blanc).
 
-## 3. Fixes outillage DÉJÀ faits (ne pas refaire)
-- `scripts/convert_generic_temporal.py` : **`LATERAL_RE`** → `[^()]*?` + `LIMIT 1` optionnel (corrige le
-  débordement sur cartes à 2+ LATERAL = cause des bascules bloquées). CTE granularity = **`scripts/granularity_cte.sql`** (repo, plus /tmp).
-- `scripts/bascule_time_filter.py` : **try/except** autour de `convert_card` (un timeout/crash ne tue plus la bascule).
-- `scripts/generate_fallback.py` : **`render_ok`** garde les cartes à param requis sans défaut (erreur
-  « pick a value for X » = param requis ≠ erreur SQL) et vérifie via `/api/dataset`. → **2-dim migrable** (#11970 OK).
-- Tests libs verts (conv_lib 54, bascule_lib 12). Aucun commit fait (working tree).
-- **(2026-06-24) NOUVEAU : `scripts/special_cards_lib.py`** (pur, 28 tests `tests/test_special_cards_lib.py`)
-  **+ `scripts/deploy_special_cards.py`** (driver live #87) **+ `scripts/sweep_card87.py`** (balayage 141 →
-  `migration/sweep-card87.json`). Suite complète 179 tests verts. cf. memory `conv-migration-etape3`.
+**Vrai paysage résiduel** (scan live des 240 résiduels, 193 cartes sales) : le « motif unique = branches CASE »
+était faux. Seulement **18 cartes à branches CASE** (7 nettoyables). Le reste = ~100 drop-only tables/smartscalars
+(risque blanc → jugement par carte requis), 63 substituables, 14 GA4 (bloqué amont), 9 irréductibles. **Le
+re-run large de `generate_fallback` n'est PAS sûr en aveugle** : petits lots + inspection valeur/rendu.
 
-## 4. TÂCHES, dans l'ordre
-1. ✅ **RE-SCAN live FAIT (2026-06-24)** : `discover_conversion_targets.py --root 317` → `migration/conv-targets.json`
-   régénéré = **110 clients / 575 dash / 528 avec tuiles / 5726 tuiles**. Le préflight stale ne ratait que **3
-   noms** (Lutèce Cosmetics, Mavala, Mavala France), pas 25. (Régénérer le préflight per-tile = optionnel ;
-   `conv_preflight.py` lit conv-targets.json frais.) ✅ **MAPPING GLOBAL RAFRAÎCHI 2026-06-25** via export CSV
-   Airtable (`flatten_airtable_csv.py` gère le multi-select → `export_conv_mapping.py`) : 173 clients, **33 ont
-   gagné des slots** que le cache ratait (bug multi-select). Liste Gaby complète = `migration/airtable-ambiguous.json`
-   (125 : 111 cardinalités ≠ + 14 « … OR … »). Backup : `conv-client-mapping.PRE-CSV.json`.
-2. ✅ **HELPER #87 CODÉ + PROUVÉ (2026-06-24)** : `special_cards_lib.py` (pur, 28 tests) + `deploy_special_cards.py`
-   (driver). Swap 87→49788 des tuiles **sélecteur**, retarget `metric` dimension→variable, custom list sur le(s)
-   filtre(s) Metric du dashboard. CLIENT-AGNOSTIQUE. Prouvé sur copies 26292 (Cica Focus) + 26293 (Helloprêt
-   multi-filtres). Revue adverse passée. **Sweep des 141** (`sweep_card87.py`→`migration/sweep-card87.json`) :
-   **133 CLEAN**, 6 NO_METRIC_PARAM (métrique fixe→passe client), 2 BLOCKED_FOREIGN (5468/5469, sibling adset
-   **5644** à migrer à part). 14/141 ont un défaut hors-liste → repli cost. **⚠️ le helper ne FINIT pas un
-   dashboard seul** (Iron Law). ✅ **INTÉGRÉ dans `migrate_client.py`** (après swap_tables, avant bascule). Test
-   bout-en-bout 6846→copie **26325** : chaîne OK ; `generate_fallback` GÈRE les perf-tables sélecteur (1427/5161/
-   5163) par substitution → **pas de nouvel outil « segment » nécessaire**. **2 blocages restants pour true-100%** :
-   (a) 🔴 **mapping cache PÉRIMÉ** (Cica live≠cache : slot 3→Custom 2 manquant) → régénérer LIVE (MCP export des
-   lignes Airtable → `export_conv_mapping.py`) ; (b) 🐛 `generate_fallback` faux-positive sur cartes spéciales déjà
-   migrées (49788/49755 : leur SQL référence CONVERSIONS) → ajouter une skip-list (+ dans le détecteur Iron-Law).
-3. **Patron segment** (#10501/10502/10531/14875) : sélecteur `breakdown` single-select ; substitution OK
-   (table `global.campaign_breakdown_daily_metrics` a les colonnes nommées) ; #11970 = vraie 2-dim (param
-   `dimension_2`). Intégrer via generate_fallback (render_ok corrigé les garde).
-4. **Combos multi-conversion** (⚠️ NEUF, pas d'outil) : 2+ conversions sur un même graphe (ex. Braxton #268
-   « Conversions 3 », Cica #267/#268). À concevoir (graphe par conversion nommée, masquage de séries, ou
-   carte mixte). C'est le morceau le plus nouveau.
-5. **Carte by-date lente de Cica Focus** : `convert_card` timeout (300s) → augmenter le timeout ou la convertir hors-bande.
-6. **Re-finir Braxton / Absolut / Cica à true-100%** (résidus 2-dim désormais migrables via le render_ok corrigé).
-7. **Dérouler A→Z** : finir CHAQUE dashboard à 100% (Iron Law), re-vérif Airtable LIVE par client, mettre à
-   jour `PROGRESS.md` + le tracker `migration/conv-migration-tracker.json` à chaque client.
+Avant toute promotion des 3 : régénérer `accounting`/`manifest` (ils marquent encore ces copies « residual »).
 
-## 5. Décisions tranchées (ne pas re-litiger)
-- Iron Law (migrer TOUT, 0 tuile conv sur l'ancien). Copies d'abord. Validation user client par client au début.
-- **#87 = Text variable** (PAS Field Filter) → la valeur passe direct au SQL, **aucune table à modifier**
-  (`analysis_metrics` est HEVO-synced ; un Field Filter exigerait d'y ajouter les noms). Dropdown via custom
-  list + `values_query_type=list`. (Vérifié live par le user : le dropdown s'affiche.)
-- 2-dim : on les MIGRE (générer + substituer). Slots non mappés / conflits → Gaby (bloquant, pas de contournement).
+---
 
-## 6. Connexion, scripts, pièges
-- Connexion : `import sys; sys.path.insert(0,'scripts'); from archive_collections import connect_resilient; mb=connect_resilient()`.
-- Orchestrateur : `scripts/migrate_client.py --client "<Nom>" --dashboards <ids ORIG> --test-collection 14016 --yes`
-  (copy shallow + tag → reuse → swap_tables → bascule --auto-prepare → generate_fallback → polish).
-- Voir les erreurs SQL : `mb.post('/api/dataset','raw',json={**dataset_query,"parameters":[...]})` puis `.json()`.
-- **Airtable** (MCP) : base `apptzpE1FqCMGH0dw`, table `tbliHOIPYGJCvLvas`. Champs : brand_name
-  `fldlzNF2KPPRh2Wdj`, type(slot) `fldKwKgjtULTSjX6g`, new_type `fldAOmPth76Vsd7AX`. **Client ACTIF = ≥1
-  new_type réel.** Mapping cache : `migration/conv-client-mapping.json` (indice ; re-vérifier live).
-- **PIÈGES** :
-  · mapping cache JSON = clés STRING ("0") ; `conv_lib._slot_of` renvoie INT → faire `{int(k):v for k,v in ...}`.
-  · pMBQL : SQL/tags dans `dataset_query.stages[0].native/.template-tags` (pas `dataset_query.native`) → `conv_lib.native_and_tags`.
-  · PUT d'un dashboard à ONGLETS doit inclure `tabs`.
-  · `mb.put/mb.post` renvoient False sur erreur HTTP → passer `'raw'` pour voir le corps.
-  · floats Snowflake bougent au 15e chiffre → comparer avec tolérance ~1e-9.
-  · cartes migrées doivent vivre dans une collection lisible par le consultant (arbre /317/ ou 11673), JAMAIS
-    le sandbox 13851 — sinon tuiles vides côté consultant. (À automatiser ; pour la validation admin c'est OK.)
-- Étape finale prod (après validation) = appliquer sur les ORIGINAUX ; le **partage Nanga reste MANUEL (GM)**.
+## Situation en une minute (⚠️ chiffres pré-correction — voir bloc ci-dessus)
+
+Le balayage initial et le catch-up des dashboards prêts sont terminés. Les originaux n'ont pas été modifiés.
+La promotion live est elle aussi terminée pour toutes les copies promouvables : **134 promotions uniques sont
+certifiées**, sans échec et sans rollback global.
+
+| Vue | État live |
+|---|---:|
+| Originaux découverts | 430 |
+| Originaux dans le périmètre | 429 |
+| Doublon exact hors périmètre | 1 — `21314`, doublon de `9933` |
+| Roadmap — complets | 136 |
+| Roadmap — résiduels | 240 |
+| Roadmap — jamais copiés | 53 |
+| Roadmap — inconnus / multi-copies non résolues | 0 / 0 |
+| Topologies physiques multi-copies | 16 — toutes réconciliées, 17 copies superseded |
+| Copies totales / dans le périmètre | 394 / 393 |
+| Copies in-scope true-100 / résiduelles / inconnues | 138 / 255 / 0 |
+
+L'accounting brut, qui inclut la copie hors périmètre, donne **73 clients, 394 copies, 138 true-100,
+256 résiduelles, 0 inconnue, 563 blockers consultant et 377 cartes de couverture**.
+
+La promotion ne change pas les statuts Iron Law : elle déplace une copie déjà certifiée, elle ne rend pas une
+copie complète. Les totaux roadmap et Iron Law ci-dessus restent donc inchangés après les 134 promotions.
+
+## Sources de vérité
+
+À lire dans cet ordre :
+
+1. `migration/accounting-final.json` — accounting live agrégé ;
+2. `migration/accounting-copies.json` — Iron Law live au grain `copy_id` et causes ;
+3. `migration/canonical-copy-decisions.json` — choix exhaustifs canonical/superseded des 16 topologies
+   multi-copies ;
+4. `migration/dashboard-client-attribution.json` — décisions explicites d'attribution et de scope ;
+5. `migration/conversion-manifest.json` — vue canonique par original, topologie des copies et roadmap ;
+6. `migration/conv-migration-tracker.json` — registre de topologie et notes d'exécution ;
+7. `migration/promotion-plan-final-validation.json` — dernier préflight live de promotion ;
+8. les trois `migration/promotion-snapshot-*.json` certifiés — preuve des 134 promotions ;
+9. `docs/conversion-migration-PROGRESS.md` — synthèse lisible ;
+10. `docs/conversion-migration-HANDOFF.md` — procédure technique et garde-fous.
+
+`accounting-copies.json` et `conversion-manifest.json` font foi pour l'Iron Law. Le tracker ne prouve pas
+qu'une copie est complète : il décrit les relations original→copie, les statuts saisis et les notes.
+
+## Mapping conversions — règle actuelle
+
+La source de mapping (auto-map + pipeline) est **Supabase `pipeline_manager.conversions`**. Airtable est
+déprécié **comme autorité d'auto-map**, mais PAS comme oracle de lecture : `migration/conv-client-mapping.json`
+contient encore ~41 réponses humaines exploitables (ex. Komilfo slot 0 = « Leads ») que Supabase a laissées
+`__UNMAPPED__`. Ne pas le supprimer. Tout re-merge d'une réponse Airtable doit être **gaté par un différentiel
+de valeur sur ≥2 fenêtres hors mai 2026** (Airtable = intention humaine, pas mapping row-level).
+
+Les colonnes `type[]` et `new_type[]` sont deux **ensembles indépendants**. Elles ne sont jamais associées par
+position dans les tableaux. Un slot peut être auto-mappé uniquement si :
+
+- l'ensemble exact de ses lignes source est égal à l'ensemble exact des lignes d'une cible `new_type` ;
+- cette cible est unique ;
+- les valeurs live non vides de la colonne positionnelle et de la colonne nommée sont strictement égales.
+
+Zéro cible, plusieurs cibles, une couverture partielle ou un écart de valeur = **blocage**, jamais une
+approximation. `--accept-diffs` n'est pas une voie de contournement.
+
+## Iron Law et règles de sécurité
+
+Une copie est true-100 uniquement si aucune carte, dans le contenu principal **ou ses séries**, ne consomme
+encore de colonne conversion positionnelle. Le contrôle final vérifie aussi le filtre temps, ses câblages et
+le défaut `Client`.
+
+- Travailler uniquement sur des copies ; les originaux restent intouchés.
+- Ne jamais promouvoir une copie résiduelle ou inconnue.
+- Ne jamais relancer `migrate_client.py` pour un original déjà copié : reprendre sa copie existante.
+- Exécuter les migrations une par une ; le tracker JSON est global et n'a pas de verrou concurrent.
+- Ne pas inventer un mapping et ne pas forcer un écart de valeurs.
+- Une erreur de bascule ou de promotion déclenche uniquement le rollback local du dashboard ou de la copie en
+  cours. Les succès antérieurs sont conservés ; aucun rollback global du lot n'est autorisé.
+
+## Catch-up des 25 dashboards initialement prêts
+
+Le lot est clos : **15 complets, 9 résiduels et 1 doublon exact exclu**.
+
+Les deux derniers succès sont :
+
+- Chilowé `9933` → copie `27797`, true-100 ;
+- Chilowé `21309` → copie `27798`, true-100.
+
+Superdiet `19890` → copie `27796` reste résiduel : les cartes générées `52448`, `52450` et `52453`
+conservent les slots positionnels 1–6 et leurs valeurs ; aucun mapping sûr n'est disponible.
+
+Chilowé `21314` est un doublon exact de `9933`. Il est hors périmètre et aucune seconde copie ne doit être
+créée pour lui.
+
+## Ce qui reste
+
+Les **53 originaux jamais copiés** sont tous classés :
+
+- 25 sont bloqués structurellement ;
+- 28 n'ont pas de mapping exploitable.
+
+Ils ne constituent pas une file « prête ». Il faut résoudre leur cause avant toute nouvelle copie.
+
+La réconciliation des **16 originaux avec plusieurs copies** est close : 16 décisions exhaustives,
+0 cas non résolu et 17 copies déclarées superseded. La topologie physique reste visible pour l'audit, mais
+elle ne constitue plus une catégorie additive de la roadmap.
+
+## Promotion live — terminée
+
+Les **134 promotions uniques certifiées** sont réparties dans trois snapshots, tous `APPLIED`, en mode
+`isolated`, avec `failures=[]` :
+
+| Snapshot | Promotions vérifiées |
+|---|---:|
+| `migration/promotion-snapshot-20260715T203055323521Z.json` | 129 |
+| `migration/promotion-snapshot-20260715T214816686551Z.json` | 1 — copie `26791` |
+| `migration/promotion-snapshot-20260715T224944247792Z.json` | 4 — originaux `329`, `863`, `15865`, `22860` |
+
+Le dernier lot a explicitement exclu l'original `18406`; il a appliqué et vérifié ses quatre autres
+candidates, sans échec. Le préflight final
+`migration/promotion-plan-final-validation.json`, hash
+`sha256:33a2d389083eaa3620d76c1b518c0ac091ec5cf0d1fb45e9258c7810184a0d32`, contient **1 READY et
+429 BLOCKED**. Son seul `READY` est `18406→27744`.
+
+Deux exceptions restent documentées, sans action automatique sûre :
+
+- `18406→27744` est true-100 mais non promouvable sous la règle « cards unchanged » : la Dashboard Question
+  interne `52308` suit automatiquement la collection du dashboard dans Metabase. Ne pas la déplacer
+  manuellement ;
+- Superdiet `18768→26804` reste bloqué : la carte `50933` diverge au grain `day`, donc la bascule du filtre
+  temps n'est pas équivalente en valeurs.
+
+Les quatre bascules temps débloquées ont réussi et passé `verify_pipeline` :
+
+| Copie | Snapshot de bascule |
+|---:|---|
+| `26754` | `migration/bascule-snapshot-26754-20260716-003151-520232.json` |
+| `26789` | `migration/bascule-snapshot-26789-20260716-003405-211675.json` |
+| `27058` | `migration/bascule-snapshot-27058-20260716-003534-824173.json` |
+| `25836` | `migration/bascule-snapshot-25836-20260716-003652-531317.json` |
+
+Leurs cartes temporal-unit partagées restent en collection technique `14115` : `50850→52626`,
+`51789→52628`, `51796→52629`, `1853→52630` et `49309→52631`. La dépendance personnelle de la copie
+`26791` a été remplacée par la carte partagée `14632→52594`, puis la copie a été promue et certifiée.
+
+## Suite correcte
+
+1. Réconciliation multi-copies : terminée, 16/16 résolues.
+2. Accounting et manifeste canoniques : régénérés ; les régénérer après chaque changement live pertinent.
+3. Promotion des copies éligibles : terminée, 134 promotions uniques certifiées.
+4. Laisser `18406→27744` et Superdiet `18768→26804` en l'état tant que leur exception n'est pas résolue
+   explicitement ; ne pas contourner les contrôles.
+5. Ne pas déplacer les cartes générées/temporal-unit de la collection technique durable et partagée `14115` ;
+   en maintenir la lisibilité pour les dashboards promus.
+6. Laisser tous les originaux et toutes les copies superseded inchangés.
+7. Faire repartager manuellement les nouveaux liens Nanga par les GM.
+
+## Historique utile — contexte, pas procédure
+
+- Juin 2026 : construction du pipeline copies→reuse→tables→filtre temps→fallback→polish, puis balayage du
+  périmètre historique.
+- Fin juin : la politique produit a été figée sur des copies destinées à devenir la nouvelle production ;
+  les originaux ne doivent plus être réécrits.
+- 15 juillet : intégration des décisions consultants sûres, migration du mapping vers Supabase, durcissement
+  des comparaisons de valeurs, catch-up des 25 dashboards prêts et premières 130 promotions certifiées.
+- 16 juillet : quatre bascules temps supplémentaires validées, quatre promotions supplémentaires certifiées,
+  puis préflight final ramené à la seule exception `18406→27744`.
+
+Les anciens chiffres et recettes mentionnés dans les journaux datés sont historiques. Pour toute décision
+opérationnelle, utiliser exclusivement les artefacts live listés plus haut.

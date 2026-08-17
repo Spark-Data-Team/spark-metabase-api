@@ -1,0 +1,526 @@
+{
+  "schema_version": 1,
+  "source": "migration/consultant-answer-reviews.json",
+  "class_counts": {
+    "canonicalisable_safe": 6,
+    "composite": 3,
+    "row_level": 21,
+    "incomplete_missing": 4,
+    "non_actionable": 23
+  },
+  "groups": [
+    {
+      "client": "900.care",
+      "slot": 2,
+      "class": "canonicalisable_safe",
+      "recommended_action": "Ajouter la cible canonique aux lignes Supabase du slot 2 sans remplacer les autres tags.",
+      "proposed_targets": ["Search visits (combo organic + sea custom conv meta)"],
+      "requires_live_set_equality": true,
+      "notes": "La réponse générique « Search visits » désigne la combinaison organic + paid ; promouvoir le mapping seulement si les ensembles de lignes sont identiques."
+    },
+    {
+      "client": "Arrago",
+      "slot": 1,
+      "class": "row_level",
+      "recommended_action": "Identifier le compte SEO et modifier uniquement ses lignes de conversion explicites.",
+      "proposed_targets": ["Leads", "Marketing Qualified Leads"],
+      "requires_live_set_equality": true,
+      "notes": "« Compte SEO » est un sélecteur de compte, pas un new_type ; ne pas créer d'override global client-slot."
+    },
+    {
+      "client": "Arrago",
+      "slot": 2,
+      "class": "row_level",
+      "recommended_action": "Identifier le compte SEO et modifier uniquement ses lignes de conversion explicites.",
+      "proposed_targets": ["Leads", "Marketing Qualified Leads"],
+      "requires_live_set_equality": true,
+      "notes": "Les événements meta et GA4 ont des cibles différentes ; le compte exact doit faire partie du sélecteur."
+    },
+    {
+      "client": "BYmyCAR",
+      "slot": 0,
+      "class": "canonicalisable_safe",
+      "recommended_action": "Ajouter Leads à toutes les conversions principales mentionnées, en conservant leurs tags Custom existants.",
+      "proposed_targets": ["Leads"],
+      "requires_live_set_equality": true,
+      "notes": "La réponse couvre sémantiquement les références de pairing restées vides : toutes les conversions citées sont des leads principaux."
+    },
+    {
+      "client": "Be Radiance",
+      "slot": 0,
+      "class": "non_actionable",
+      "recommended_action": "Différer la migration de ce groupe et marquer le compte comme indisponible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Réponse consultant : compte down, N/A."
+    },
+    {
+      "client": "BeneBono",
+      "slot": 1,
+      "class": "row_level",
+      "recommended_action": "Ajouter Sign ups uniquement aux événements subscribe_website, User Account Status Check et user_registration explicitement cités.",
+      "proposed_targets": ["Sign ups"],
+      "requires_live_set_equality": true,
+      "notes": "Ne pas extrapoler à total_registration, actuellement associé à Custom 6, sans confirmation supplémentaire."
+    },
+    {
+      "client": "CapCar",
+      "slot": 0,
+      "class": "composite",
+      "recommended_action": "Attribuer un Custom libre commun aux deux familles d'événements, ou confirmer explicitement qu'elles doivent toutes deux devenir Leads.",
+      "proposed_targets": ["Leads", "Custom 1"],
+      "requires_live_set_equality": true,
+      "notes": "Le slot agrège volontairement Candidature et RegistrationCompleted ; « les deux » ne choisit pas une cible canonique unique."
+    },
+    {
+      "client": "Cirque du Soleil",
+      "slot": 3,
+      "class": "canonicalisable_safe",
+      "recommended_action": "Ajouter la cible canonique aux lignes Supabase du slot 3 sans remplacer les autres tags.",
+      "proposed_targets": ["Search visits (combo organic + sea custom conv meta)"],
+      "requires_live_set_equality": true,
+      "notes": "La réponse « Search visits » se normalise vers la combinaison organic + paid."
+    },
+    {
+      "client": "Distingo Bank",
+      "slot": 0,
+      "class": "row_level",
+      "recommended_action": "Corriger le type Main conversion et la cible sur les trois événements nommés par le consultant uniquement.",
+      "proposed_targets": ["Leads"],
+      "requires_live_set_equality": true,
+      "notes": "Événements visés : Livret Epargne formulaire 100 % en ligne, formulaire complet courrier et CAT formulaire 100 % en ligne ; ne pas inclure call back par défaut."
+    },
+    {
+      "client": "Distingo Bank",
+      "slot": 1,
+      "class": "row_level",
+      "recommended_action": "Résoudre les deux événements Validation Step 1 par conversion_id puis choisir un Custom libre commun.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Le consultant identifie les événements, mais ne fournit pas de new_type canonique."
+    },
+    {
+      "client": "Distingo Bank",
+      "slot": 2,
+      "class": "row_level",
+      "recommended_action": "Résoudre l'événement demande doc par conversion_id puis lui attribuer un Custom libre.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Le nom métier fourni n'est pas une valeur de la taxonomie new_type."
+    },
+    {
+      "client": "Enlaps",
+      "slot": 0,
+      "class": "composite",
+      "recommended_action": "Utiliser un mapping par source/dashboard ou un Custom libre commun reproduisant exactement le slot historique.",
+      "proposed_targets": ["Leads", "Purchases"],
+      "requires_live_set_equality": true,
+      "notes": "Les dashboards Demo attendent Leads tandis que les dashboards Purchase attendent Purchases ; aucun override global unique n'est sémantiquement correct."
+    },
+    {
+      "client": "HomeExchange",
+      "slot": 0,
+      "class": "incomplete_missing",
+      "recommended_action": "Redemander une décision row-level avec compte, plateforme, événement et options canoniques fermées.",
+      "proposed_targets": ["Custom 1", "Purchases"],
+      "requires_live_set_equality": true,
+      "notes": "Aucune réponse ; le contexte mélange home creation et purchase, avec un pairing ambigu supplémentaire."
+    },
+    {
+      "client": "HomeExchange",
+      "slot": 4,
+      "class": "incomplete_missing",
+      "recommended_action": "Redemander une décision row-level pour l'événement Home 80 percent.",
+      "proposed_targets": ["Marketing Qualified Leads"],
+      "requires_live_set_equality": true,
+      "notes": "Aucune réponse ; la cible proposée vient seulement du contexte de pairing et ne doit pas être appliquée automatiquement."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 1,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 2,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 3,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 4,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 7,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 8,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 9,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 10,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 11,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 12,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 13,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 14,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 16,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 17,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Les petits culottés",
+      "slot": 18,
+      "class": "non_actionable",
+      "recommended_action": "Exclure du batch automatique et ouvrir une tâche de refonte des dashboards.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant demande une reprise complète des dashboards."
+    },
+    {
+      "client": "Lunii",
+      "slot": 1,
+      "class": "row_level",
+      "recommended_action": "Résoudre les lignes Achat FAH par conversion_id puis confirmer ou allouer leur Custom cible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Achat FAH est un nom métier, pas un new_type ; les anciens pairings suggèrent plusieurs Custom possibles."
+    },
+    {
+      "client": "Lunii",
+      "slot": 5,
+      "class": "row_level",
+      "recommended_action": "Résoudre les lignes Achat FLAM par conversion_id puis confirmer ou allouer leur Custom cible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Les anciens pairings suggèrent Custom 5 et Custom 13, sans correspondance positionnelle sûre."
+    },
+    {
+      "client": "Lunii",
+      "slot": 6,
+      "class": "row_level",
+      "recommended_action": "Résoudre les lignes Achat Device par conversion_id puis confirmer ou allouer leur Custom cible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Le produit identifié ne suffit pas à choisir une colonne nommée sans collision."
+    },
+    {
+      "client": "Lunii",
+      "slot": 15,
+      "class": "row_level",
+      "recommended_action": "Résoudre les lignes Achat par conversion_id puis choisir entre Purchases et un Custom dédié après comparaison des ensembles.",
+      "proposed_targets": ["Purchases"],
+      "requires_live_set_equality": true,
+      "notes": "Purchases est seulement une cible candidate : elle peut agréger d'autres achats non présents dans le slot 15."
+    },
+    {
+      "client": "Quitoque",
+      "slot": 1,
+      "class": "row_level",
+      "recommended_action": "Résoudre Step 1 ancien tracking par conversion_id et lui allouer un Custom libre distinct.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Le libellé distingue explicitement l'ancien tracking du Step 1 actuel."
+    },
+    {
+      "client": "Quitoque",
+      "slot": 2,
+      "class": "canonicalisable_safe",
+      "recommended_action": "Ajouter Sign ups aux lignes Signup du slot 2 sans remplacer les autres tags.",
+      "proposed_targets": ["Sign ups"],
+      "requires_live_set_equality": true,
+      "notes": "Signup est une normalisation univoque vers Sign ups."
+    },
+    {
+      "client": "Quitoque",
+      "slot": 3,
+      "class": "row_level",
+      "recommended_action": "Résoudre Step 3 ancien tracking par conversion_id et lui allouer un Custom libre distinct.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Le libellé distingue explicitement l'ancien tracking du Step 3 actuel."
+    },
+    {
+      "client": "Quitoque",
+      "slot": 4,
+      "class": "row_level",
+      "recommended_action": "Résoudre les lignes Step 1 actuelles par conversion_id et leur allouer un Custom libre.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Le nom métier ne fixe pas le numéro Custom."
+    },
+    {
+      "client": "Quitoque",
+      "slot": 5,
+      "class": "row_level",
+      "recommended_action": "Résoudre les lignes Step 2 par conversion_id et leur allouer un Custom libre.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Le nom métier ne fixe pas le numéro Custom."
+    },
+    {
+      "client": "Quitoque",
+      "slot": 6,
+      "class": "row_level",
+      "recommended_action": "Résoudre les lignes Step 3 actuelles par conversion_id et leur allouer un Custom libre.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Le nom métier ne fixe pas le numéro Custom."
+    },
+    {
+      "client": "Quitoque",
+      "slot": 7,
+      "class": "row_level",
+      "recommended_action": "Résoudre les lignes Orders planned par conversion_id et leur allouer un Custom libre.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Orders planned n'appartient pas à la taxonomie canonique actuelle."
+    },
+    {
+      "client": "Quiz Room",
+      "slot": 0,
+      "class": "row_level",
+      "recommended_action": "Identifier le compte SEO et limiter toute correction à ses conversion_row_id.",
+      "proposed_targets": ["Custom 1", "Custom 2", "Custom 3"],
+      "requires_live_set_equality": true,
+      "notes": "La réponse sélectionne un compte, pas une cible ; le contexte mélange achats, contacts et appels."
+    },
+    {
+      "client": "Quiz Room",
+      "slot": 1,
+      "class": "row_level",
+      "recommended_action": "Identifier le compte SEO et limiter toute correction à ses conversion_row_id.",
+      "proposed_targets": ["Custom 1", "Leads"],
+      "requires_live_set_equality": true,
+      "notes": "Aucun override global ne doit être dérivé de « Compte SEO Only »."
+    },
+    {
+      "client": "Redesk",
+      "slot": 1,
+      "class": "incomplete_missing",
+      "recommended_action": "Redemander une décision row-level avec l'événement Purchase_Shopify et des options fermées.",
+      "proposed_targets": ["Purchases"],
+      "requires_live_set_equality": true,
+      "notes": "Aucune réponse ; Purchases est seulement suggéré par l'ancien contexte de pairing."
+    },
+    {
+      "client": "Reputation",
+      "slot": 1,
+      "class": "row_level",
+      "recommended_action": "Identifier le compte SEO et traiter séparément Get a Demo Click et linkedin opens.",
+      "proposed_targets": ["Sales Qualified Leads", "Content views OR View Item"],
+      "requires_live_set_equality": true,
+      "notes": "La réponse ne tranche ni le compte exact ni Content views versus View Item ; aucun mapping global n'est sûr."
+    },
+    {
+      "client": "Richardson",
+      "slot": 1,
+      "class": "non_actionable",
+      "recommended_action": "Différer la migration de ce groupe et marquer le compte comme indisponible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Réponse consultant : compte down, N/A."
+    },
+    {
+      "client": "Richardson",
+      "slot": 4,
+      "class": "non_actionable",
+      "recommended_action": "Différer la migration de ce groupe et marquer le compte comme indisponible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Réponse consultant : compte down, N/A."
+    },
+    {
+      "client": "Rivadouce",
+      "slot": 0,
+      "class": "canonicalisable_safe",
+      "recommended_action": "Ajouter Purchases aux événements de premier achat et de réachat tout en conservant leurs autres tags.",
+      "proposed_targets": ["Purchases"],
+      "requires_live_set_equality": true,
+      "notes": "Le consultant demande explicitement que les deux familles de Main conversions alimentent Purchase."
+    },
+    {
+      "client": "Rivadouce",
+      "slot": 1,
+      "class": "composite",
+      "recommended_action": "Attribuer un Custom libre commun à l'ensemble exact des lignes du slot 1, en conservant Leads et Purchases.",
+      "proposed_targets": ["Leads", "Purchases"],
+      "requires_live_set_equality": true,
+      "notes": "La réponse « Les deux » confirme un agrégat intentionnel ; choisir Leads ou Purchases seul changerait le KPI."
+    },
+    {
+      "client": "U2P",
+      "slot": 0,
+      "class": "incomplete_missing",
+      "recommended_action": "Redemander une décision row-level avec compte, plateforme, événements et options canoniques.",
+      "proposed_targets": [],
+      "requires_live_set_equality": true,
+      "notes": "Aucune réponse et aucun contexte d'événement exploitable dans le handoff."
+    },
+    {
+      "client": "Welcome to the Jungle",
+      "slot": 0,
+      "class": "row_level",
+      "recommended_action": "Corriger d'abord l'attribution des dashboards, puis ajouter Leads aux cinq événements explicitement listés.",
+      "proposed_targets": ["Leads"],
+      "requires_live_set_equality": true,
+      "notes": "La réponse « tous ces events » couvre les pairings laissés vides, mais la liste de dashboards est polluée par d'autres clients."
+    },
+    {
+      "client": "Welcome to the Jungle",
+      "slot": 2,
+      "class": "non_actionable",
+      "recommended_action": "Corriger le manifeste et l'attribution client des dashboards ; ne pas modifier Supabase pour ce groupe.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant confirme que les dashboards mentionnés ne sont pas des dashboards WTTJ."
+    },
+    {
+      "client": "Welcome to the Jungle",
+      "slot": 5,
+      "class": "non_actionable",
+      "recommended_action": "Retirer la conversion obsolète des dashboards WTTJ concernés au lieu de créer un mapping.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Le consultant indique que ce slot vient d'un ancien mapping et doit disparaître des dashboards."
+    },
+    {
+      "client": "Yooji",
+      "slot": 1,
+      "class": "row_level",
+      "recommended_action": "Retirer 1st conversion du tableau type de la ligne GA4 page_view et conserver les événements Packs en Custom 1.",
+      "proposed_targets": ["Custom 1"],
+      "requires_live_set_equality": true,
+      "notes": "Il s'agit d'une correction du type row-level, pas d'un remplacement global de new_type."
+    },
+    {
+      "client": "Yooji",
+      "slot": 4,
+      "class": "canonicalisable_safe",
+      "recommended_action": "Ajouter la cible canonique aux lignes Paid Search Visits du slot 4 sans remplacer les autres tags.",
+      "proposed_targets": ["Paid search visits (custom conv meta)"],
+      "requires_live_set_equality": true,
+      "notes": "La réponse se normalise sans ambiguïté vers la valeur canonique Paid search visits."
+    },
+    {
+      "client": "Zenchef",
+      "slot": 0,
+      "class": "non_actionable",
+      "recommended_action": "Différer la migration de ce groupe et marquer le compte comme indisponible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Réponse consultant : compte down, N/A."
+    },
+    {
+      "client": "Zenchef",
+      "slot": 1,
+      "class": "non_actionable",
+      "recommended_action": "Différer la migration de ce groupe et marquer le compte comme indisponible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Réponse consultant : compte down, N/A."
+    },
+    {
+      "client": "Zenchef",
+      "slot": 2,
+      "class": "non_actionable",
+      "recommended_action": "Différer la migration de ce groupe et marquer le compte comme indisponible.",
+      "proposed_targets": [],
+      "requires_live_set_equality": false,
+      "notes": "Réponse consultant : compte down, N/A."
+    }
+  ]
+}

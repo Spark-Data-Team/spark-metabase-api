@@ -203,6 +203,13 @@ def test_replacement_ids_from_registry_entries():
                {"old_id": 9, "new_id": 99, "verified": False}]   # non vérifié -> exclu
     assert scl.replacement_ids(entries) == {49788, 49755}
 
+def test_replacement_ids_does_not_exempt_verified_temporal_only_cards():
+    entries = [
+        {"old_id": 166, "new_id": 49313, "verified": True},
+        {"old_id": 53, "new_id": 49095, "verified": True},
+    ]
+    assert scl.replacement_ids(entries) == set()
+
 def test_replacement_ids_empty():
     assert scl.replacement_ids([]) == set()
 

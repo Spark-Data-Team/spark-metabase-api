@@ -9,24 +9,52 @@ Usage:
   python3 scripts/migrate_dashboard_full.py --dashboard 14016 --client "Pro Nutrition"           # dry-run (rapport)
   python3 scripts/migrate_dashboard_full.py --dashboard 14016 --client "Pro Nutrition" --copy --yes
 """
-import argparse, json, sys
+import argparse, json, sys, time
 from datetime import datetime
 from pathlib import Path
+import requests
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 from spark_metabase_api import Metabase_API
 from reorg_phase1 import _load_env
 import swap_lib, conv_lib
+from export_supabase_conversion_mapping import load_repository_mapping
 MIG = REPO / "migration"
 
-def connect():
+def connect(retries=4, retry_delay=2):
     e = _load_env()
-    return Metabase_API(domain=e["METABASE_DOMAIN"], email=e["METABASE_EMAIL"], password=e["METABASE_PASSWORD"])
+    last_error = None
+    for attempt in range(retries):
+        try:
+            return Metabase_API(
+                domain=e["METABASE_DOMAIN"],
+                email=e["METABASE_EMAIL"],
+                password=e["METABASE_PASSWORD"],
+            )
+        except requests.exceptions.ConnectionError as exc:
+            last_error = exc
+            if attempt + 1 >= retries:
+                break
+            delay = retry_delay * (2 ** attempt)
+            print(f"Connexion Metabase indisponible, nouvelle tentative dans {delay}s…")
+            time.sleep(delay)
+    raise last_error
 
 def _dcs(d): return d.get("dashcards") or d.get("ordered_cards") or []
 
 def load_inputs():
-    mapping = json.loads((MIG / "conv-client-mapping.json").read_text())
+    mapping, diagnostics = load_repository_mapping(MIG)
+    if diagnostics:
+        mismatches = sum(item.get("kind") == "decision_row_set_mismatch" for item in diagnostics)
+        collisions = sum(item.get("kind") == "effective_target_collision" for item in diagnostics)
+        other = len(diagnostics) - mismatches - collisions
+        print(
+            "Mapping Supabase: "
+            f"{mismatches} décision(s) candidate(s) à valider par valeur, "
+            f"{collisions} collision(s) effective(s) bloquée(s), "
+            f"{other} autre(s) diagnostic(s).",
+            file=sys.stderr,
+        )
     raw = json.loads((MIG / "conv-new-index.json").read_text())
     index = {}
     for k, v in raw.items():
@@ -50,7 +78,14 @@ def generate_card(mb, old_card, sub_map, coll_id, cmap=None, drop_unmapped=True)
     # complexe ; on garde alors la version substituée-seule qui REND, avec slots non mappés en rab).
     def _sub(native):
         out = conv_lib.apply_substitution(native, sub_map)
-        return conv_lib.drop_conversion_selects(out) if drop_unmapped else out
+        if not drop_unmapped:
+            return out
+        # 1) branches CASE non mappées (distribution/sélecteur : le positionnel vit DANS un CASE, pas
+        #    dans un item — drop_conversion_selects retirerait tout l'item = la métrique, cassant la
+        #    carte) ; 2) items SELECT non mappés + cascade d'alias. Ordre obligatoire : brancher AVANT
+        #    les items, sinon le CASE référence encore du positionnel et se fait retirer en entier.
+        out = conv_lib.drop_conversion_case_branches(out)
+        return conv_lib.drop_conversion_selects(out)
     for st in dq.get("stages", []) or []:
         if st.get("lib/type") == "mbql.stage/native":
             st["native"] = _sub(st["native"])
@@ -69,6 +104,10 @@ def generate_card(mb, old_card, sub_map, coll_id, cmap=None, drop_unmapped=True)
     return r.get("id") if isinstance(r, dict) else None
 
 def head(vals): return vals[-1] if vals else None
+
+def values_match_fail_closed(before, after):
+    """Une comparaison vide ou différente n'autorise jamais l'application."""
+    return bool(before) and before == after
 
 def main():
     ap = argparse.ArgumentParser()
@@ -106,10 +145,12 @@ def main():
         new_sql, _ = conv_lib.native_and_tags(mb.get(f"/api/card/{chosen}"))
         residual = sorted(conv_lib.old_conversion_columns(new_sql))
         before, after = card_values(mb, cid, args.client, args.window), card_values(mb, chosen, args.client, args.window)
+        value_guard_ok = values_match_fail_closed(before, after)
         report.append({"tile": card.get("name"), "method": "générée", "old_card": cid, "new_card": chosen,
-                       "identical": before == after, "before": head(before), "after": head(after),
+                       "identical": value_guard_ok, "before": head(before), "after": head(after),
                        "unmapped": sorted(unmapped), "residual_old": residual})
-        plan.append((dc, cid, chosen, sub_map, {}))
+        if value_guard_ok:
+            plan.append((dc, cid, chosen, sub_map, {}))
 
     # rapport
     print(f"\n{'TUILE':42} {'MÉTHODE':12} {'AVANT':>12} {'APRÈS':>12}  ÉTAT")

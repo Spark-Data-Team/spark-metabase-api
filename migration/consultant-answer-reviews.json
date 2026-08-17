@@ -1,0 +1,821 @@
+[
+  {
+    "client": "900.care",
+    "slot": 2,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Search visits"
+    ],
+    "refs": [
+      "900.care§2§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      2
+    ]
+  },
+  {
+    "client": "Arrago",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte SEO"
+    ],
+    "refs": [
+      "Arrago§1§CONFLIT"
+    ],
+    "rows": [
+      3
+    ]
+  },
+  {
+    "client": "Arrago",
+    "slot": 2,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte SEO"
+    ],
+    "refs": [
+      "Arrago§2§CONFLIT"
+    ],
+    "rows": [
+      4
+    ]
+  },
+  {
+    "client": "BYmyCAR",
+    "slot": 0,
+    "reason": "incomplete_group",
+    "answers": [
+      "Il n'y a pas de priorisation de leads, toutes les conversions mentionnées dans le bug sont des conversions principales sur BMC"
+    ],
+    "refs": [
+      "BYmyCAR§0§CONFLIT",
+      "BYmyCAR§0§PAIRING_AMBIGU"
+    ],
+    "rows": [
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ]
+  },
+  {
+    "client": "Be Radiance",
+    "slot": 0,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte down N/A"
+    ],
+    "refs": [
+      "Be Radiance§0§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      12
+    ]
+  },
+  {
+    "client": "BeneBono",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "C'est subscribe_website sur les 3 comptes Meta, User Account Status check sur Google et user_registration sur Tiktok"
+    ],
+    "refs": [
+      "BeneBono§1§CONFLIT"
+    ],
+    "rows": [
+      13
+    ]
+  },
+  {
+    "client": "CapCar",
+    "slot": 0,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "les deux : on valorise autant la réunion d'info que la candidature envoyée"
+    ],
+    "refs": [
+      "CapCar§0§CONFLIT"
+    ],
+    "rows": [
+      14
+    ]
+  },
+  {
+    "client": "Cirque du Soleil",
+    "slot": 3,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Search visits"
+    ],
+    "refs": [
+      "Cirque du Soleil§3§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      15
+    ]
+  },
+  {
+    "client": "Distingo Bank",
+    "slot": 0,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Ce qui est marqué en leads est bon. Les mains conversions sont Livret Epargne - Formulaire 100% en ligne, Livret Epargne - Formulaire Complet (courrier) et CAT - Formulaire 100% en ligne",
+      "Je voudrais compter en conversion principale les deux conversions \"Livret Epargne - Formulaire 100% en ligne\" et \"Livret Epargne - Formulaire Complet (courrier)\""
+    ],
+    "refs": [
+      "Distingo Bank§0§CONFLIT",
+      "Distingo Bank§0§PAIRING_AMBIGU"
+    ],
+    "rows": [
+      16,
+      19,
+      20
+    ]
+  },
+  {
+    "client": "Distingo Bank",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Conversion 1 = Validation Step 1 CAT Green & Validation Step 1 Livret Epargne"
+    ],
+    "refs": [
+      "Distingo Bank§1§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      17
+    ]
+  },
+  {
+    "client": "Distingo Bank",
+    "slot": 2,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Conversion 2 = demande doc"
+    ],
+    "refs": [
+      "Distingo Bank§2§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      18
+    ]
+  },
+  {
+    "client": "Enlaps",
+    "slot": 0,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Ca dépend du dashboard, la conversion principale pour les dashs Demo est la démo (mappé Main Conversion) et pour les dashs purchase c'est le purchase (mappé 1st conversion actuellement). Pas sûr de comprendre où est le pb ici"
+    ],
+    "refs": [
+      "Enlaps§0§CONFLIT"
+    ],
+    "rows": [
+      25
+    ]
+  },
+  {
+    "client": "HomeExchange",
+    "slot": 0,
+    "reason": "missing_answer",
+    "answers": [],
+    "refs": [
+      "HomeExchange§0§CONFLIT",
+      "HomeExchange§0§PAIRING_AMBIGU"
+    ],
+    "rows": [
+      28,
+      30
+    ]
+  },
+  {
+    "client": "HomeExchange",
+    "slot": 4,
+    "reason": "missing_answer",
+    "answers": [],
+    "refs": [
+      "HomeExchange§4§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      29
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§1§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      33
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 2,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§2§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      34
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 3,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§3§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      35
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 4,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§4§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      36
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 7,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§7§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      44
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 8,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§8§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      45
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 9,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§9§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      37
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 10,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§10§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      38
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 11,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§11§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      31
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 12,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§12§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      39
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 13,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§13§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      32
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 14,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§14§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      40
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 16,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§16§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      41
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 17,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§17§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      42
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 18,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Jsp, il faut que je retravaille les dashs de fond en comble ici"
+    ],
+    "refs": [
+      "Les petits culottés§18§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      43
+    ]
+  },
+  {
+    "client": "Lunii",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Achat FAH"
+    ],
+    "refs": [
+      "Lunii§1§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      46
+    ]
+  },
+  {
+    "client": "Lunii",
+    "slot": 5,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Achat FLAM"
+    ],
+    "refs": [
+      "Lunii§5§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      47
+    ]
+  },
+  {
+    "client": "Lunii",
+    "slot": 6,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Achat Device"
+    ],
+    "refs": [
+      "Lunii§6§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      48
+    ]
+  },
+  {
+    "client": "Lunii",
+    "slot": 15,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Achat"
+    ],
+    "refs": [
+      "Lunii§15§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      49
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Step 1 (ancien tracking)"
+    ],
+    "refs": [
+      "Quitoque§1§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      53
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 2,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Signup"
+    ],
+    "refs": [
+      "Quitoque§2§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      52
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 3,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Step 3 (ancien tracking)"
+    ],
+    "refs": [
+      "Quitoque§3§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      54
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 4,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Step 1"
+    ],
+    "refs": [
+      "Quitoque§4§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      51
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 5,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Step 2"
+    ],
+    "refs": [
+      "Quitoque§5§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      55
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 6,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Step 3"
+    ],
+    "refs": [
+      "Quitoque§6§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      50
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 7,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Orders planned"
+    ],
+    "refs": [
+      "Quitoque§7§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      56
+    ]
+  },
+  {
+    "client": "Quiz Room",
+    "slot": 0,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte SEO Only"
+    ],
+    "refs": [
+      "Quiz Room§0§CONFLIT",
+      "Quiz Room§0§PAIRING_AMBIGU"
+    ],
+    "rows": [
+      57,
+      59
+    ]
+  },
+  {
+    "client": "Quiz Room",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte SEO Only"
+    ],
+    "refs": [
+      "Quiz Room§1§CONFLIT"
+    ],
+    "rows": [
+      58
+    ]
+  },
+  {
+    "client": "Redesk",
+    "slot": 1,
+    "reason": "missing_answer",
+    "answers": [],
+    "refs": [
+      "Redesk§1§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      60
+    ]
+  },
+  {
+    "client": "Reputation",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte SEO Only"
+    ],
+    "refs": [
+      "Reputation§1§CONFLIT",
+      "Reputation§1§INDECIS (… OR …)"
+    ],
+    "rows": [
+      61,
+      62
+    ]
+  },
+  {
+    "client": "Richardson",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte down N/A"
+    ],
+    "refs": [
+      "Richardson§1§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      63
+    ]
+  },
+  {
+    "client": "Richardson",
+    "slot": 4,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte down N/A"
+    ],
+    "refs": [
+      "Richardson§4§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      64
+    ]
+  },
+  {
+    "client": "Rivadouce",
+    "slot": 0,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Purchase : La combinaison des deux Main conversions est indispensable car l'un contient les premiers achats et l'autre les réachats"
+    ],
+    "refs": [
+      "Rivadouce§0§CONFLIT"
+    ],
+    "rows": [
+      65
+    ]
+  },
+  {
+    "client": "Rivadouce",
+    "slot": 1,
+    "reason": "mixed_not_migratable",
+    "answers": [
+      "Les deux"
+    ],
+    "refs": [
+      "Rivadouce§1§CONFLIT"
+    ],
+    "rows": [
+      66
+    ]
+  },
+  {
+    "client": "U2P",
+    "slot": 0,
+    "reason": "missing_answer",
+    "answers": [],
+    "refs": [
+      "U2P§0§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      68
+    ]
+  },
+  {
+    "client": "Welcome to the Jungle",
+    "slot": 0,
+    "reason": "incomplete_group",
+    "answers": [
+      "Ce sont toutes des conversions principales, je ne comprends pas la question. Tous ces events doivent rentrer dans le type \"lead\"",
+      "Les dash mentionnés ne sont pas les dash de WTTJ"
+    ],
+    "refs": [
+      "Welcome to the Jungle§0§NON_MAPPE_UTILISE",
+      "Welcome to the Jungle§0§PAIRING_AMBIGU"
+    ],
+    "rows": [
+      69,
+      72,
+      73,
+      74,
+      75,
+      76
+    ]
+  },
+  {
+    "client": "Welcome to the Jungle",
+    "slot": 2,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Les dash mentionnés ne sont pas les dash de WTTJ"
+    ],
+    "refs": [
+      "Welcome to the Jungle§2§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      70
+    ]
+  },
+  {
+    "client": "Welcome to the Jungle",
+    "slot": 5,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "C'est hérité d'un ancien mapping, j'ai modifié avec le nouveau mapping mais il faudra que je retire cette conversion des dashs. Pas mal de choses obsolètes sur les dash welcome"
+    ],
+    "refs": [
+      "Welcome to the Jungle§5§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      71
+    ]
+  },
+  {
+    "client": "Yooji",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Pack Div Prot - Pour la ligne GA4, conversion 1 saisie par erreur"
+    ],
+    "refs": [
+      "Yooji§1§CONFLIT",
+      "Yooji§1§INDECIS (… OR …)"
+    ],
+    "rows": [
+      77,
+      78
+    ]
+  },
+  {
+    "client": "Yooji",
+    "slot": 4,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Paid Search Visits"
+    ],
+    "refs": [
+      "Yooji§4§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      79
+    ]
+  },
+  {
+    "client": "Zenchef",
+    "slot": 0,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte down N/A"
+    ],
+    "refs": [
+      "Zenchef§0§NON_MAPPE_UTILISE",
+      "Zenchef§0§PAIRING_AMBIGU"
+    ],
+    "rows": [
+      82,
+      83,
+      84
+    ]
+  },
+  {
+    "client": "Zenchef",
+    "slot": 1,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte down N/A"
+    ],
+    "refs": [
+      "Zenchef§1§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      80
+    ]
+  },
+  {
+    "client": "Zenchef",
+    "slot": 2,
+    "reason": "noncanonical_free_text",
+    "answers": [
+      "Compte down N/A"
+    ],
+    "refs": [
+      "Zenchef§2§NON_MAPPE_UTILISE"
+    ],
+    "rows": [
+      81
+    ]
+  }
+]

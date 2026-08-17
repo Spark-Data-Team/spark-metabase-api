@@ -1,0 +1,772 @@
+[
+  {
+    "client": "Dougs",
+    "slot": 0,
+    "new_type": "Custom 1",
+    "raw": [
+      "Custom 1"
+    ],
+    "refs": [
+      "Dougs§0§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Dougs",
+    "slot": 1,
+    "new_type": "Custom 2",
+    "raw": [
+      "Custom 2"
+    ],
+    "refs": [
+      "Dougs§1§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Ecopia",
+    "slot": 0,
+    "new_type": "Marketing Qualified Leads",
+    "raw": [
+      "Marketing Qualified Leads"
+    ],
+    "refs": [
+      "Ecopia§0§CONFLIT"
+    ]
+  },
+  {
+    "client": "Father and Sons",
+    "slot": 1,
+    "new_type": "Custom 1",
+    "raw": [
+      "Custom 1"
+    ],
+    "refs": [
+      "Father and Sons§1§CONFLIT"
+    ]
+  },
+  {
+    "client": "Gamin Tout Terrain",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Gamin Tout Terrain§0§CONFLIT"
+    ]
+  },
+  {
+    "client": "Rivadouce",
+    "slot": 2,
+    "new_type": "Sign ups",
+    "raw": [
+      "Sign ups"
+    ],
+    "refs": [
+      "Rivadouce§2§CONFLIT"
+    ]
+  },
+  {
+    "client": "900.care",
+    "slot": 2,
+    "new_type": "Organic search visits (custom conv meta)",
+    "raw": [
+      "Organic search visits (custom conv meta)"
+    ],
+    "refs": [
+      "900.care§2§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Cirque du Soleil",
+    "slot": 3,
+    "new_type": "Organic search visits (custom conv meta)",
+    "raw": [
+      "Organic search visits (custom conv meta)"
+    ],
+    "refs": [
+      "Cirque du Soleil§3§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 2,
+    "new_type": "Sign ups",
+    "raw": [
+      "Signup"
+    ],
+    "refs": [
+      "Quitoque§2§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Yooji",
+    "slot": 4,
+    "new_type": "Paid search visits (custom conv meta)",
+    "raw": [
+      "Paid Search Visits"
+    ],
+    "refs": [
+      "Yooji§4§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Distingo Bank",
+    "slot": 2,
+    "new_type": "Custom 2",
+    "raw": [
+      "Conversion 2 = demande doc"
+    ],
+    "refs": [
+      "Distingo Bank§2§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Lunii",
+    "slot": 1,
+    "new_type": "Custom 1",
+    "raw": [
+      "Achat FAH"
+    ],
+    "refs": [
+      "Lunii§1§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Lunii",
+    "slot": 5,
+    "new_type": "Custom 5",
+    "raw": [
+      "Achat FLAM"
+    ],
+    "refs": [
+      "Lunii§5§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Lunii",
+    "slot": 6,
+    "new_type": "Custom 5",
+    "raw": [
+      "Custom 5"
+    ],
+    "refs": [
+      "Lunii§6§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 6,
+    "new_type": "Custom 6",
+    "raw": [
+      "Step 3"
+    ],
+    "refs": [
+      "Quitoque§6§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 4,
+    "new_type": "Custom 4",
+    "raw": [
+      "Step 1"
+    ],
+    "refs": [
+      "Quitoque§4§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 1,
+    "new_type": "Custom 1",
+    "raw": [
+      "Step 1 (ancien tracking)"
+    ],
+    "refs": [
+      "Quitoque§1§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 3,
+    "new_type": "Custom 3",
+    "raw": [
+      "Step 3 (ancien tracking)"
+    ],
+    "refs": [
+      "Quitoque§3§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 5,
+    "new_type": "Custom 5",
+    "raw": [
+      "Step 2"
+    ],
+    "refs": [
+      "Quitoque§5§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 7,
+    "new_type": "Custom 7",
+    "raw": [
+      "Orders planned"
+    ],
+    "refs": [
+      "Quitoque§7§NON_MAPPE_UTILISE"
+    ]
+  },
+  {
+    "client": "Quitoque",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Quitoque§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Welcome to the Jungle",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Welcome to the Jungle§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Quiz Room",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Quiz Room§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Rivadouce",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Rivadouce§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Enlaps",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Enlaps§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Comptastar",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Comptastar§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Lunii",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Lunii§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Cirque du Soleil",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Cirque du Soleil§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "En Voiture Simone (EVS)",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "En Voiture Simone (EVS)§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "U2P",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "U2P§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "BeneBono",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "BeneBono§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "HomeExchange",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "HomeExchange§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Perifit",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Perifit§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "CapCar",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "CapCar§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Distingo Bank",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Distingo Bank§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Arrago",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Arrago§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "Richardson",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Richardson§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "TuneCore",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "TuneCore§0§ROUND2_MAIN_CONV"
+    ]
+  },
+  {
+    "client": "My Blend",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "My Blend§0§R2_MAIN_PURCHASES"
+    ]
+  },
+  {
+    "client": "Les petits culottés",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Les petits culottés§0§R2_MAIN_PURCHASES"
+    ]
+  },
+  {
+    "client": "Absolut Cashmere",
+    "slot": 1,
+    "new_type": "Add to cart",
+    "raw": [
+      "Add to cart"
+    ],
+    "refs": [
+      "Absolut Cashmere§1§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Distingo Bank",
+    "slot": 3,
+    "new_type": "Custom 3",
+    "raw": [
+      "Custom 3"
+    ],
+    "refs": [
+      "Distingo Bank§3§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Distingo Bank",
+    "slot": 4,
+    "new_type": "Custom 2",
+    "raw": [
+      "Custom 2"
+    ],
+    "refs": [
+      "Distingo Bank§4§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Distingo Bank",
+    "slot": 5,
+    "new_type": "Custom 1",
+    "raw": [
+      "Custom 1"
+    ],
+    "refs": [
+      "Distingo Bank§5§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Dougs",
+    "slot": 4,
+    "new_type": "Custom 4",
+    "raw": [
+      "Custom 4"
+    ],
+    "refs": [
+      "Dougs§4§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Dougs",
+    "slot": 5,
+    "new_type": "Custom 5",
+    "raw": [
+      "Custom 5"
+    ],
+    "refs": [
+      "Dougs§5§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Enlaps",
+    "slot": 1,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Enlaps§1§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "HomeExchange",
+    "slot": 3,
+    "new_type": "Sign ups",
+    "raw": [
+      "Sign ups"
+    ],
+    "refs": [
+      "HomeExchange§3§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "HomeExchange",
+    "slot": 4,
+    "new_type": "Marketing Qualified Leads",
+    "raw": [
+      "Marketing Qualified Leads"
+    ],
+    "refs": [
+      "HomeExchange§4§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "LocaBoat Group",
+    "slot": 1,
+    "new_type": "Add to cart",
+    "raw": [
+      "Add to cart"
+    ],
+    "refs": [
+      "LocaBoat Group§1§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "LocaBoat Group",
+    "slot": 5,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "LocaBoat Group§5§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Virgil",
+    "slot": 2,
+    "new_type": "Sales Qualified Leads",
+    "raw": [
+      "Sales Qualified Leads"
+    ],
+    "refs": [
+      "Virgil§2§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Zenchef",
+    "slot": 1,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Zenchef§1§RELAX-subset-2026-07-17"
+    ]
+  },
+  {
+    "client": "Zenchef",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Zenchef§0§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Reputation",
+    "slot": 0,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Reputation§0§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "24S",
+    "slot": 2,
+    "new_type": "Custom 1",
+    "raw": [
+      "Custom 1"
+    ],
+    "refs": [
+      "24S§2§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Arrago",
+    "slot": 1,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Arrago§1§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Arrago",
+    "slot": 2,
+    "new_type": "Marketing Qualified Leads",
+    "raw": [
+      "Marketing Qualified Leads"
+    ],
+    "refs": [
+      "Arrago§2§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Dougs",
+    "slot": 2,
+    "new_type": "Custom 2",
+    "raw": [
+      "Custom 2"
+    ],
+    "refs": [
+      "Dougs§2§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Dougs",
+    "slot": 3,
+    "new_type": "Custom 3",
+    "raw": [
+      "Custom 3"
+    ],
+    "refs": [
+      "Dougs§3§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "HomeExchange",
+    "slot": 2,
+    "new_type": "Custom 1",
+    "raw": [
+      "Custom 1"
+    ],
+    "refs": [
+      "HomeExchange§2§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Reputation",
+    "slot": 1,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Reputation§1§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Reputation",
+    "slot": 2,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Reputation§2§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Reputation",
+    "slot": 3,
+    "new_type": "Marketing Qualified Leads",
+    "raw": [
+      "Marketing Qualified Leads"
+    ],
+    "refs": [
+      "Reputation§3§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Rivadouce",
+    "slot": 1,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Rivadouce§1§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Tradis",
+    "slot": 4,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Tradis§4§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Welcome to the Jungle",
+    "slot": 1,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Welcome to the Jungle§1§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Welcome to the Jungle",
+    "slot": 2,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Welcome to the Jungle§2§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Welcome to the Jungle",
+    "slot": 5,
+    "new_type": "Leads",
+    "raw": [
+      "Leads"
+    ],
+    "refs": [
+      "Welcome to the Jungle§5§user-2026-07-17"
+    ]
+  },
+  {
+    "client": "Be Radiance",
+    "slot": 0,
+    "new_type": "Purchases",
+    "raw": [
+      "Purchases"
+    ],
+    "refs": [
+      "Be Radiance§0§user-2026-07-17-supabase-tagged"
+    ]
+  }
+]

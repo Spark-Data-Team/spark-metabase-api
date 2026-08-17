@@ -139,3 +139,7 @@ migration/*
 !migration/*.js
 !migration/*.yaml
 !migration/conv-client-mapping.json
+!migration/HANDOFF-consultants-CORRIGE.csv
+!migration/consultant-decisions.json
+!migration/consultant-answer-reviews.json
+!migration/consultant-normalization.json

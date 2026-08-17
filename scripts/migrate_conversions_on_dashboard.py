@@ -18,6 +18,7 @@ sys.path.insert(0, str(REPO / "scripts")); sys.path.insert(0, str(REPO))
 from spark_metabase_api import Metabase_API
 from reorg_phase1 import _load_env
 import swap_lib, conv_lib
+from export_supabase_conversion_mapping import load_repository_mapping
 from spark_metabase_api import validate as V
 
 MIG = REPO / "migration"
@@ -30,7 +31,7 @@ def _dashcards(d):
     return d.get("dashcards") or d.get("ordered_cards") or []
 
 def load_inputs():
-    mapping = json.loads((MIG / "conv-client-mapping.json").read_text())
+    mapping, _ = load_repository_mapping(MIG)
     raw = json.loads((MIG / "conv-new-index.json").read_text())
     index = {}
     for k, v in raw.items():
@@ -104,13 +105,12 @@ def main():
     ap.add_argument("--copy", action="store_true", help="migrer une copie (test) au lieu de l'original")
     ap.add_argument("--yes", action="store_true", help="appliquer (sinon dry-run)")
     ap.add_argument("--window", default="2026-05-01~2026-05-31", help="fenêtre de validation date/all-options")
-    ap.add_argument("--no-verify", action="store_true", help="ne PAS vérifier avant/après (déconseillé)")
     args = ap.parse_args()
     mb = connect()
     mapping_all, index = load_inputs()
     cmap = {int(k): v for k, v in mapping_all.get(args.client, {}).items()}
     if not cmap:
-        sys.exit(f"Aucun mapping pour client {args.client!r} (conv-client-mapping.json).")
+        sys.exit(f"Aucun mapping Supabase pour client {args.client!r}.")
 
     src = args.dashboard
     if args.copy and args.yes:
@@ -164,23 +164,25 @@ def main():
         print("\n(DRY-RUN ou rien à faire — aucune modification.)")
         return
 
-    # GARDE-FOU: ne remplacer une tuile que si la valeur avant == après (sinon on la laisse sur l'ancien).
-    if not args.no_verify:
-        verified = []
-        for item in plan:
-            _dc, _card, _new, _res, _oc, _ren = item
-            before = card_values(mb, _card["id"], args.client, args.window)
-            after = card_values(mb, _res["new_card_id"], args.client, args.window)
-            if all(f.level == "ok" for f in V.check_values(_card.get("name"), before, after, mode="identical")):
-                verified.append(item)
-            else:
-                print(f"  ⚠️ NON migrée «{_card.get('name')}» — valeur avant/après différente "
-                      f"({len(before)} vs {len(after)} valeurs) → laissée sur l'ancien système")
-        plan = verified
-        print(f"Vérifiées identiques avant/après : {len(plan)} tuile(s) à migrer.")
-        if not plan:
-            print("(Rien de vérifié-identique — aucune modification.)")
-            return
+    # GARDE-FOU non désactivable : ne remplacer une tuile que si les deux résultats
+    # sont NON VIDES et strictement identiques. Une décision consultant est un candidat
+    # sémantique, jamais une autorisation d'accepter un écart de valeur.
+    verified = []
+    for item in plan:
+        _dc, _card, _new, _res, _oc, _ren = item
+        before = card_values(mb, _card["id"], args.client, args.window)
+        after = card_values(mb, _res["new_card_id"], args.client, args.window)
+        findings = V.check_values(_card.get("name"), before, after, mode="identical")
+        if before and all(f.level == "ok" for f in findings):
+            verified.append(item)
+        else:
+            print(f"  ⚠️ NON migrée «{_card.get('name')}» — valeur vide ou différente "
+                  f"({len(before)} vs {len(after)} valeurs) → laissée sur l'ancien système")
+    plan = verified
+    print(f"Vérifiées identiques avant/après : {len(plan)} tuile(s) à migrer.")
+    if not plan:
+        print("(Rien de vérifié-identique — aucune modification.)")
+        return
 
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     snap = MIG / f"conv-migrate-snapshot-{src}-{ts}.json"
