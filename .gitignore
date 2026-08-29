@@ -143,3 +143,6 @@ migration/*
 !migration/consultant-decisions.json
 !migration/consultant-answer-reviews.json
 !migration/consultant-normalization.json
+
+# Dumps live à la racine (noms de clients / collections personnelles) — régénérables, non versionnés
+/*.json
