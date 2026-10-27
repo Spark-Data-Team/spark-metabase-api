@@ -383,7 +383,7 @@ def appliquer(mb, plan):
         poser_tuiles(mb, did, plan, crees["cartes"])
     except Exception:
         print("   échec : archivage de ce qui a été créé")
-        rollback(mb, [x for x in [crees["dashboard"]] + crees["cartes"] if x])
+        rollback(mb, crees["dashboard"], crees["cartes"])
         raise
     return crees
 
@@ -413,10 +413,11 @@ def poser_tuiles(mb, did, plan, ids_cartes):
 
 
 def controler(mb, dash):
-    """Rejoue chaque tuile avec les filtres par défaut : une tuile vide ou en erreur est suspecte."""
+    """Rejoue chaque tuile avec les filtres par défaut ; lève si une tuile est vide ou en erreur."""
     pid = {p["slug"]: p for p in dash["parameters"]}
     prm = [{"id": pid[s]["id"], "type": pid[s]["type"], "value": pid[s]["default"], "target": None}
            for s in ("date_filter", "time_period", "channel")]
+    suspectes = []
     for dc in dash["dashcards"]:
         if not dc.get("card_id"):
             continue
@@ -426,6 +427,10 @@ def controler(mb, dash):
         etat = r.get("status")
         print("      {:6d} {:50s} {} {}l {}".format(dc["card_id"], dc["card"]["name"][:50], etat, len(rows),
                                                    (r.get("error") or str(rows[:1]))[:60]))
+        if etat != "completed" or not rows:
+            suspectes.append(dc["card_id"])
+    if suspectes:
+        raise RuntimeError("tuiles vides ou en erreur : {}".format(suspectes))
 
 
 def tracer(crees):
@@ -513,11 +518,11 @@ def restaurer_split(mb, chemin, crees=None):
     print("   dashboard {} et carte {} restaurés, {} cartes archivées".format(dash["id"], carte["id"], len(crees)))
 
 
-def rollback(mb, ids):
-    """Archive dashboard puis cartes : un id de dashboard d'abord, les cartes ensuite."""
-    did, cartes = ids[0], ids[1:]
-    http.put(mb, "/api/dashboard/{}".format(did), json={"archived": True})
-    print("dashboard {} archivé".format(did))
+def rollback(mb, did, cartes):
+    """Archive le dashboard (None s'il n'a pas été créé) puis les cartes."""
+    if did is not None:
+        http.put(mb, "/api/dashboard/{}".format(did), json={"archived": True})
+        print("dashboard {} archivé".format(did))
     for cid in cartes:
         http.put(mb, "/api/card/{}".format(cid), json={"archived": True})
         print("carte {} archivée".format(cid))
@@ -541,7 +546,8 @@ def main():
         restaurer_split(mb, args.unsplit)
         return
     if args.rollback:
-        rollback(mb, [int(x) for x in args.rollback.split(",")])
+        ids = [int(x) for x in args.rollback.split(",")]
+        rollback(mb, ids[0], ids[1:])
         return
 
     plan = construire_plan(mb)

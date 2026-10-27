@@ -1,7 +1,8 @@
 import pytest
 
+from scripts import create_channel_internal_dashboard as module
 from scripts.create_channel_internal_dashboard import (
-    CARTES, GRILLE, NB_CARTES_V1, PARAMETRES, base, tags_natifs, verifier_grille)
+    CARTES, GRILLE, NB_CARTES_V1, PARAMETRES, base, controler, rollback, tags_natifs, verifier_grille)
 
 
 def test_grille_sans_chevauchement():
@@ -41,8 +42,12 @@ def test_cartes_v1_gardent_leur_place():
 
 
 def test_onglet_general_sans_conversion():
+    # Colonnes du SELECT final, entre le dernier « select » et « from base ».
     sql = CARTES[0][1].lower()
-    assert "leads" not in sql.split("from base")[-1] and "purchases" not in sql.split("from base")[-1]
+    fin = sql.rfind("from base")
+    colonnes = sql[sql.rfind("select", 0, fin):fin]
+    assert "cost" in colonnes
+    assert "leads" not in colonnes and "purchases" not in colonnes
 
 
 def test_modele_filtre_par_sous_requete():
@@ -57,3 +62,39 @@ def test_tags_natifs_couvrent_les_filtres():
     for _slug, _nom, _type, _defaut, tag in PARAMETRES:
         assert tag in tags
     assert tags["time_periods"]["type"] == "temporal-unit"
+
+
+class FauxHttp:
+    def __init__(self, reponse=None):
+        self.appels, self.reponse = [], reponse
+
+    def put(self, _mb, chemin, json):
+        self.appels.append(chemin)
+
+    def post(self, _mb, chemin, json):
+        return self.reponse
+
+
+def test_rollback_sans_dashboard_archive_seulement_les_cartes(monkeypatch):
+    faux = FauxHttp()
+    monkeypatch.setattr(module, "http", faux)
+    rollback(None, None, [57700, 57701])
+    assert faux.appels == ["/api/card/57700", "/api/card/57701"]
+
+
+def dashboard_une_tuile():
+    params = [{"slug": s, "id": s, "type": "x", "default": None} for s in ("date_filter", "time_period", "channel")]
+    return {"id": 1, "parameters": params, "dashcards": [{"id": 2, "card_id": 3, "card": {"name": "carte"}}]}
+
+
+@pytest.mark.parametrize("reponse", [{"status": "failed", "error": "boom"},
+                                     {"status": "completed", "data": {"rows": []}}])
+def test_controler_leve_si_tuile_vide_ou_en_erreur(monkeypatch, reponse):
+    monkeypatch.setattr(module, "http", FauxHttp(reponse))
+    with pytest.raises(RuntimeError):
+        controler(None, dashboard_une_tuile())
+
+
+def test_controler_passe_si_tuile_remplie(monkeypatch):
+    monkeypatch.setattr(module, "http", FauxHttp({"status": "completed", "data": {"rows": [[1]]}}))
+    controler(None, dashboard_une_tuile())
