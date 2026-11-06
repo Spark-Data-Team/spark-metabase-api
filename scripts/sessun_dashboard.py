@@ -12,7 +12,8 @@ d'avant). Sources : GLOBAL.CAMPAIGN_DAILY_METRICS pour le média, ANALYTICS.GOOG
 CLIENT_DATA.SESSUN__* pour le reste. Les tables restent sans alias : Metabase écrit "SCHEMA"."TABLE"."COLONNE".
 
 Décisions de Louis du 06/11/2026 : nouveaux clients Splio arrêtés au dernier chargement, sur deux périodes de même durée ;
-ROAS sur le CA HT net de retours ; filtre Marché hors de la Vue d'ensemble (les dépenses ne se répartissent pas par marché).
+ROAS sur le CA HT net de retours ; filtre Marché hors de la Vue d'ensemble.
+Les dépenses se croisent aux ventes par pays de livraison : le pays de la campagne vient de campaign_location ou de son nom.
 Retours rattachés à la date de commande (spark-pipelines #1507) : ils mettent environ 35 jours à arriver, donc CA net, ROAS et
 taux de retour ne montrent aucune évolution sur une période plus récente.
 """
@@ -44,6 +45,9 @@ EUR = {"number_style": "currency", "currency": "EUR", "currency_style": "symbol"
 PCT = {"number_style": "percent", "decimals": 1}
 DEC = {"number_style": "decimal", "decimals": 2}
 ENT = {"number_style": "decimal", "decimals": 0}
+PCT2 = {"number_style": "percent", "decimals": 2}
+DEC_EUR = {"number_style": "currency", "currency": "EUR", "currency_style": "symbol", "decimals": 2}
+PTS = {"number_style": "decimal", "decimals": 1, "suffix": " pts"}
 
 # Une couleur par mesure, partout ; version pâle pour la période précédente.
 COULEURS = {"net": ("#FC926D", "#FDC1AB"), "orders": ("#6896E9", "#A0BDF1"), "spend": ("#F7C41F", "#FBE39A"), "roas": ("#51B8A6", "#A8DCD2"),
@@ -62,7 +66,10 @@ def source(table, *portee):
 
 S_SALES = source(SALES)
 S_MEDIA = source(MEDIA, f"{MEDIA}.client_id = '{CLIENT}' -- Sessùn")
-S_TRAFFIC = source(TRAFFIC, f"{TRAFFIC}.client_id = '{CLIENT}' -- Sessùn")
+# La propriété GA4 globale cumule les 8 propriétés par pays (mesuré sur 2026 : corrélation quotidienne 0,99, 8,14 M contre 8,09 M) :
+# les additionner compte chaque session deux fois.
+GA4_GLOBALE = "284930543"
+S_TRAFFIC = source(TRAFFIC, f"{TRAFFIC}.client_id = '{CLIENT}' -- Sessùn", f"{TRAFFIC}.profile = '{GA4_GLOBALE}' -- propriété globale")
 S_PRODUCTS = source(PRODUCTS)
 S_RETAIL = source(RETAIL)
 
@@ -71,7 +78,7 @@ S_RETAIL = source(RETAIL)
 CHARGEMENTS = {
     "splio": f"SELECT DATEADD(day, -1, MAX(date)) AS last_date\nFROM {SALES}\nWHERE new_customers_splio IS NOT NULL",
     "boutique": f"SELECT DATEADD(day, -1, MAX(date)) AS last_date\nFROM {RETAIL}",
-    "trafic": f"SELECT DATEADD(day, -1, MAX(date)) AS last_date\nFROM {TRAFFIC}\nWHERE client_id = '{CLIENT}'",
+    "trafic": f"SELECT DATEADD(day, -1, MAX(date)) AS last_date\nFROM {TRAFFIC}\nWHERE client_id = '{CLIENT}'\n    AND profile = '{GA4_GLOBALE}'",
 }
 # Les retours mettent environ 35 jours à arriver : plus récent, un CA net ne se compare pas.
 RECENT = "(SELECT current_end FROM periods) > DATEADD(day, -35, CURRENT_DATE)"
@@ -280,18 +287,26 @@ def part(alias, mesure, titre):
 
 
 def tableau(cle, titre, s, dim, alias, titre_dim, mesures, colonnes, tri, filtres=(), arret=None, fin_splio=False, mesures_prec=None,
-            total=True, limite=None, ou=(), ordre=None, description=None, mesures_cour=None, plein=False):
-    """Tableau avec ligne Total et Δ contre la période de comparaison, comme Polène."""
-    noms = list(mesures)
+            total=True, limite=None, ou=(), ordre=None, description=None, mesures_cour=None, plein=False, textes=None, lectures=None):
+    """Tableau avec ligne Total et Δ contre la période de comparaison, comme Polène.
+
+    textes : colonnes de texte de la période en cours, vides sur la ligne Total. lectures : CTE déjà écrites (croisement de
+    deux tables), à la place de la lecture de s ; la dernière de chaque liste s'appelle current_data ou previous_data.
+    """
+    noms, textes = list(mesures), textes or {}
     ctes = debut_periodes(arret, fin_splio)
     dims = [f"{dim} AS {alias}"]
-    ctes.append(cte("current_data", lecture_courante(s, mesures_cour or mesures, filtres, dims, arret)))
-    ctes.append(cte("previous_data", lecture_precedente(s, mesures_prec or mesures, filtres, dims)))
+    if lectures:
+        ctes += lectures
+    else:
+        ctes.append(cte("current_data", lecture_courante(s, {**(mesures_cour or mesures), **textes}, filtres, dims, arret)))
+        ctes.append(cte("previous_data", lecture_precedente(s, mesures_prec or mesures, filtres, dims)))
     if total:
-        liste = ", ".join([alias] + noms)
         sommes = ", ".join(f"SUM({n}) AS {n}" for n in noms)
-        for periode in ("current", "previous"):
-            ctes.append(cte(f"{periode}_final", f"SELECT 2 AS rank, {liste}\nFROM {periode}_data\nUNION ALL\nSELECT 1 AS rank, 'Total' AS {alias}, {sommes}\nFROM {periode}_data"))
+        for periode, en_plus in (("current", list(textes)), ("previous", [])):
+            liste = ", ".join([alias] + noms + en_plus)
+            vides = "".join(f", NULL AS {n}" for n in en_plus)
+            ctes.append(cte(f"{periode}_final", f"SELECT 2 AS rank, {liste}\nFROM {periode}_data\nUNION ALL\nSELECT 1 AS rank, 'Total' AS {alias}, {sommes}{vides}\nFROM {periode}_data"))
     gauche, droite = ("current_final", "previous_final") if total else ("current_data", "previous_data")
     # plein : un produit sans vente sur la période reste listé, c'est la plus forte des baisses.
     lignes = (["c.rank AS rank"] if total else []) + [f"COALESCE(c.{alias}, p.{alias}) AS {alias}" if plein else f"c.{alias} AS {alias}"]
@@ -329,6 +344,25 @@ CANAL = """CASE
         ELSE 'Other'
     END"""
 PLATEFORME = "CASE WHEN LOWER(campaign_channel) = 'tiktok' THEN 'TikTok' ELSE INITCAP(campaign_channel) END"
+# Pays visé par une campagne : le découpage Nanga, sinon le nom (Daily_FR_..., GS - BE/FR - ...). Le reste tombe dans Other.
+PAYS_MEDIA = """CASE COALESCE(
+            NULLIF(UPPER(campaign_location), 'OTHER'),
+            UPPER(REGEXP_SUBSTR(campaign_name, '(^|[_ |/-])(FR|DE|UK|GB|ES|BE|NL|IT|CH|US)([_ |/-]|$)', 1, 1, 'ie', 2))
+        )
+        WHEN 'UK' THEN 'GB'
+        WHEN 'GB' THEN 'GB'
+        WHEN 'FR' THEN 'FR'
+        WHEN 'BE' THEN 'BE'
+        WHEN 'DE' THEN 'DE'
+        WHEN 'ES' THEN 'ES'
+        WHEN 'NL' THEN 'NL'
+        WHEN 'IT' THEN 'IT'
+        WHEN 'CH' THEN 'CH'
+        WHEN 'US' THEN 'US'
+        ELSE 'Other'
+    END"""
+PAYS_VENTES = "IFF(country IN ('FR', 'BE', 'DE', 'ES', 'GB', 'NL', 'IT', 'CH', 'US'), country, 'Other')"
+TYPE_CAMPAGNE = f"{PLATEFORME} || ' / ' || INITCAP(REPLACE(campaign_category, '_', ' '))"
 TYPE_PRODUIT = "COALESCE(product_type, 'Not specified')"
 CATEGORIE = "INITCAP(REPLACE(REGEXP_REPLACE(product_category, '[0-9]+$', ''), '-', ' '))"
 FILTRES_PRODUIT = ("market", "product_type", "product_name")
@@ -341,6 +375,9 @@ D_RECENT = " Returns take about 35 days to come in: figures are provisional and 
 D_NET = "Website sales minus tax and returns, shipping included. A refund counts on the date of its order." + D_RECENT
 D_RETOUR = "Refunded amount / gross revenue incl. tax, for the orders of the period." + D_RECENT
 D_P1 = "Previous: the same days in the comparison period, by default the period just before."
+D_PAYS = ("Spend by country targeted, read from the campaign, against website sales by shipping country. Other: every other country, "
+          "where a campaign may still deliver sales (a German campaign can sell in Austria). Not affected by the Market filter." + D_RECENT)
+D_DECLARE = "Purchases and revenue as reported by each platform, under its own attribution rules."
 D_BOUTIQUE = "Splio receipts, amounts as loaded, tax not available. Stops at the last load, and the comparison covers the same number of days."
 
 SEGMENT = """CASE segments.rfm_segment
@@ -352,6 +389,44 @@ SEGMENT = """CASE segments.rfm_segment
         ELSE segments.rfm_segment
     END"""
 SEGMENT_TABLE = SEGMENT.replace("segments.", "")
+MESURES_DIFFUSION = {"cost": "SUM(cost)", "impressions": "SUM(impressions)", "clicks": "SUM(clicks)"}
+
+
+def tableau_pays(cle, titre, colonnes, tri, description):
+    """Dépenses et ventes par pays : deux tables, un seul {{date}}, et Splio borné comme sur les tuiles."""
+    d_media, d_ventes = [f"{PAYS_MEDIA} AS country_group"], [f"{PAYS_VENTES} AS country_group"]
+    arret_cour, arret_prec = "(SELECT last_date FROM last_load)", "(SELECT comparison_{} FROM periods)"
+    dans_cmp = f"BETWEEN {arret_prec.format('start_splio')} AND {arret_prec.format('end_splio')}"
+    ventes = {"net_revenue_ht": NET_HT, "total_orders": "SUM(orders)", "revenue_ttc": "SUM(revenue_ttc)"}
+    joindre = """SELECT
+    COALESCE(media.country_group, sales.country_group) AS country_group,
+    media.cost,
+    media.cost_splio,
+    sales.net_revenue_ht,
+    sales.total_orders,
+    sales.revenue_ttc,
+    sales.new_customers
+FROM {p}_media AS media
+    FULL JOIN {p}_sales AS sales ON sales.country_group = media.country_group"""
+    lectures = [
+        cte("current_media", lecture_courante(S_MEDIA, {"cost": "SUM(cost)", "cost_splio": f"SUM(IFF({MEDIA}.date <= {arret_cour}, cost, NULL))"}, dims=d_media)),
+        cte("previous_media", lecture_precedente(S_MEDIA, {"cost": "SUM(cost)", "cost_splio": f"SUM(IFF({MEDIA}.date {dans_cmp}, cost, NULL))"}, dims=d_media)),
+        cte("current_sales", lecture_courante(S_SALES, {**ventes, "new_customers": f"SUM(IFF({SALES}.date <= {arret_cour}, new_customers_splio, NULL))"}, dims=d_ventes)),
+        cte("previous_sales", lecture_precedente(S_SALES, {**ventes, "new_customers": f"SUM(IFF({SALES}.date {dans_cmp}, new_customers_splio, NULL))"}, dims=d_ventes)),
+        cte("current_data", joindre.format(p="current")), cte("previous_data", joindre.format(p="previous"))]
+    mesures = dict.fromkeys(["cost", "cost_splio", "net_revenue_ht", "total_orders", "revenue_ttc", "new_customers"])
+    return tableau(cle, titre, None, None, "country_group", "Country", mesures, colonnes, tri, fin_splio=True, lectures=lectures, description=description)
+
+
+def web_et_boutique(cle, titre, colonne, f, mesure_web, mesure_boutique, description):
+    """Barres empilées web et boutique, arrêtées au dernier chargement : la boutique n'existe que par Splio."""
+    lire = lambda t, canal, mesure: "\n".join([
+        clause_select(["{{time_period}} AS time_period", f"'{canal}' AS sales_channel"], {colonne: mesure}), f"FROM {t}", f"    JOIN utils.calendar ON utils.calendar.date = {t}.date",
+        clause_where(["utils.calendar.date <= (SELECT last_date FROM last_load)"], ("date",)), "GROUP BY 1, 2"])
+    sql = "WITH " + cte("last_load", CHARGEMENTS["boutique"]) + "\n\n" + lire(SALES, "Web", mesure_web) + "\nUNION ALL\n" + lire(RETAIL, "Retail", mesure_boutique) + f"\nORDER BY time_period ASC, {colonne} ASC"
+    return carte(cle, titre, sql, "bar", viz_empile("sales_channel", colonne, f, {"Web": COULEURS["orders"][0], "Retail": COULEURS["net"][0]}), description)
+
+
 V = {"sales": (S_SALES, {"net_revenue_ht": NET_HT})}
 M = {"media": (S_MEDIA, {"cost": "SUM(cost)"})}
 
@@ -405,7 +480,7 @@ CARTES = [
             mesures_cour={"net_revenue_ht": NET_HT, "total_orders": "SUM(orders)", "revenue_ttc": "SUM(revenue_ttc)",
                           "new_customers": f"SUM(IFF({SALES}.date <= (SELECT last_date FROM last_load), new_customers_splio, NULL))",
                           "first_orders": "SUM(first_orders_web)", "refund_value_ttc": "SUM(refund_value_ttc)"},
-            description="Website sales by site version (EN covers countries served in English). No spend by market: Meta runs on a global account since July 2026. New customers stop at the last Splio load." + D_RECENT),
+            description="Website sales by site version (EN covers countries served in English). Spend is by country, in the table above. New customers stop at the last Splio load." + D_RECENT),
     donut("d_orders_market", "Orders breakdown by market", S_SALES, "market", "market", "SUM(orders)", "total_orders", ENT, couleurs=MARCHES_C),
     empile("e_orders_market", "Orders by period and market", S_SALES, "market", "market", "SUM(orders)", "total_orders", ENT, ("market",), couleurs=MARCHES_C),
     donut("d_revenue_market", "Gross revenue breakdown by market", S_SALES, "market", "market", "SUM(revenue_ttc)", "revenue_ttc", EUR, description="Revenue incl. tax, before returns.", couleurs=MARCHES_C),
@@ -415,6 +490,31 @@ CARTES = [
             [col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR, recent=True), col("total_orders", "{t}.total_orders", "Orders", ENT),
              col("avg_order_value", "{t}.revenue_ttc / NULLIF({t}.total_orders, 0)", "AOV incl. tax", EUR)],
             "net_revenue_ht", filtres=("market",), limite=20, description=D_NET),
+    tableau_pays("t_media_countries", "Media and sales by country", [
+        col("cost", "{t}.cost", "Spend", EUR), col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR, recent=True),
+        col("blended_roas", "{t}.net_revenue_ht / NULLIF({t}.cost, 0)", "Blended ROAS", DEC, recent=True), col("total_orders", "{t}.total_orders", "Orders", ENT, delta=False),
+        col("avg_order_value", "{t}.revenue_ttc / NULLIF({t}.total_orders, 0)", "AOV incl. tax", EUR, delta=False), col("new_customers", "{t}.new_customers", "New customers (Splio)", ENT),
+        col("blended_ncac", "{t}.cost_splio / NULLIF({t}.new_customers, 0)", "New customer CAC", EUR)], "cost", D_PAYS),
+    tableau_pays("t_media_share", "Share of spend against share of revenue", [
+        part("cost_share", "cost", "Share of spend"), part("revenue_share", "net_revenue_ht", "Share of net revenue"),
+        col("share_gap", "100 * (c.cost / NULLIF(SUM(IFF(c.rank = 2, c.cost, 0)) OVER (), 0) - c.net_revenue_ht / NULLIF(SUM(IFF(c.rank = 2, c.net_revenue_ht, 0)) OVER (), 0))", "Gap", PTS, delta=False)],
+        "cost_share", "Gap: share of spend minus share of net revenue, in points. Above zero, the country takes more budget than its weight in sales. " + D_PAYS),
+    carte("b_media_countries", "Spend and net revenue by country", "\n".join([
+        "WITH " + cte("media", lecture_courante(S_MEDIA, {"cost": "SUM(cost)"}, dims=[f"{PAYS_MEDIA} AS country_group"])) + ",",
+        "",
+        cte("sales", lecture_courante(S_SALES, {"net_revenue_ht": NET_HT}, dims=[f"{PAYS_VENTES} AS country_group"])),
+        "",
+        "SELECT",
+        "    COALESCE(media.country_group, sales.country_group) AS country_group,",
+        "    media.cost,",
+        "    sales.net_revenue_ht",
+        "FROM media",
+        "    FULL JOIN sales ON sales.country_group = media.country_group",
+        "ORDER BY sales.net_revenue_ht DESC NULLS LAST"]), "bar",
+          {"graph.dimensions": ["COUNTRY_GROUP"], "graph.metrics": ["NET_REVENUE_HT", "COST"], "graph.x_axis.scale": "ordinal", "graph.y_axis.auto_split": False,
+           "graph.x_axis.labels_enabled": False, "graph.y_axis.labels_enabled": False, "graph.show_values": True, "graph.label_value_frequency": "fit", "graph.label_value_formatting": "compact",
+           "series_settings": {"NET_REVENUE_HT": {"title": "Net revenue", "color": COULEURS["net"][0]}, "COST": {"title": "Spend", "color": COULEURS["spend"][0]}},
+           **formats({"cost": sur_graphique(EUR), "net_revenue_ht": sur_graphique(EUR)})}, D_PAYS),
     # ---- Média et trafic -----------------------------------------------------------------------------------------------
     donut("d_cost_platform", "Spend breakdown by platform", S_MEDIA, PLATEFORME, "platform", "SUM(cost)", "cost", EUR, couleurs=PLATEFORMES),
     empile("e_cost_platform", "Spend by period and platform", S_MEDIA, PLATEFORME, "platform", "SUM(cost)", "cost", EUR, couleurs=PLATEFORMES),
@@ -423,30 +523,48 @@ CARTES = [
             [col("cost", "{t}.cost", "Spend", EUR), part("cost_share", "cost", "Share of spend"), col("purchases", "{t}.purchases", "Reported purchases", ENT, delta=False),
              col("purchases_value", "{t}.purchases_value", "Reported revenue", EUR), col("declared_roas", "{t}.purchases_value / NULLIF({t}.cost, 0)", "Reported ROAS", DEC),
              col("declared_cpa", "{t}.cost / NULLIF({t}.purchases, 0)", "Reported CPA", EUR, delta=False)],
-            "cost", description="Purchases and revenue as reported by each platform, under its own attribution rules. Blended ROAS on the Overview tab uses website sales."),
+            "cost", description=D_DECLARE + " Blended ROAS on the Overview tab uses website sales."),
+    tableau("t_delivery", "Delivery by platform", S_MEDIA, PLATEFORME, "platform", "Platform", MESURES_DIFFUSION,
+            [col("impressions", "{t}.impressions", "Impressions", ENT), col("clicks", "{t}.clicks", "Clicks", ENT),
+             col("ctr", "{t}.clicks / NULLIF({t}.impressions, 0)", "CTR", PCT2), col("cpc", "{t}.cost / NULLIF({t}.clicks, 0)", "CPC", DEC_EUR), col("cpm", "1000 * {t}.cost / NULLIF({t}.impressions, 0)", "CPM", DEC_EUR)],
+            "impressions", description="As reported by each platform."),
+    tableau("t_campaign_types", "Spend by campaign type", S_MEDIA, TYPE_CAMPAGNE, "campaign_type", "Platform / type",
+            {**MESURES_DIFFUSION, "purchases_value": "SUM(purchases_value)"},
+            [col("cost", "{t}.cost", "Spend", EUR), part("cost_share", "cost", "Share of spend"), col("clicks", "{t}.clicks", "Clicks", ENT, delta=False),
+             col("cpc", "{t}.cost / NULLIF({t}.clicks, 0)", "CPC", DEC_EUR, delta=False), col("declared_roas", "{t}.purchases_value / NULLIF({t}.cost, 0)", "Reported ROAS", DEC)],
+            "cost", description="Campaign type as set in the Nanga naming rules. " + D_DECLARE),
+    tableau("t_campaigns", "Top 20 campaigns", S_MEDIA, "campaign_name", "campaign_name", "Campaign",
+            {**MESURES_DIFFUSION, "purchases": "SUM(purchases)", "purchases_value": "SUM(purchases_value)"},
+            [col("platform", "{t}.platform", "Platform", {}, delta=False), col("cost", "{t}.cost", "Spend", EUR), col("impressions", "{t}.impressions", "Impressions", ENT, delta=False),
+             col("ctr", "{t}.clicks / NULLIF({t}.impressions, 0)", "CTR", PCT2, delta=False), col("cpc", "{t}.cost / NULLIF({t}.clicks, 0)", "CPC", DEC_EUR, delta=False),
+             col("purchases", "{t}.purchases", "Reported purchases", ENT, delta=False), col("declared_roas", "{t}.purchases_value / NULLIF({t}.cost, 0)", "Reported ROAS", DEC, delta=False)],
+            "cost", limite=20, textes={"platform": f"MAX({PLATEFORME})"}, description="Ranked by spend. " + D_DECLARE),
     donut("d_sessions_channel", "Sessions breakdown by channel", S_TRAFFIC, CANAL, "channel", "SUM(sessions)", "total_sessions", ENT, couleurs=CANAUX_C),
     empile("e_sessions_channel", "Sessions by period and channel", S_TRAFFIC, CANAL, "channel", "SUM(sessions)", "total_sessions", ENT, couleurs=CANAUX_C),
     tableau("t_channels", "Traffic by channel", S_TRAFFIC, CANAL, "channel", "Channel",
             {"total_sessions": "SUM(sessions)", "new_users": "SUM(new_users)", "engaged_sessions": "SUM(engaged_sessions)"},
             [col("total_sessions", "{t}.total_sessions", "Sessions", ENT), part("sessions_share", "total_sessions", "Share of sessions"), col("new_users", "{t}.new_users", "New users", ENT),
              col("engagement_rate", "{t}.engaged_sessions / NULLIF({t}.total_sessions, 0)", "Engagement rate", PCT)],
-            "total_sessions", arret="trafic", description="Source: GA4, to the last complete day. Other: sessions GA4 reports without a known medium. GA4 conversions are not configured for Sessùn in Nanga, so there is no conversion rate by channel yet."),
+            "total_sessions", arret="trafic", description="Source: GA4 global property, to the last complete day. Other: sessions GA4 reports without a known medium. GA4 conversions are not configured for Sessùn in Nanga, so there is no conversion rate by channel yet."),
     # ---- Produits -----------------------------------------------------------------------------------------------------
 ]
 
 PRODUIT_MESURES = {"units_sold": "SUM(units_sold)", "net_revenue_ht": NET_HT, "units_returned": "SUM(units_returned)"}
 
 
-def colonnes_produit():
-    return [col("units_sold", "{t}.units_sold", "Units sold", ENT), col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR, recent=True),
-            col("return_rate", "{t}.units_returned / NULLIF({t}.units_sold, 0)", "Unit return rate", PCT, delta=False)]
+def colonnes_produit(part_ca=False, categorie=False):
+    return (([col("product_category", "{t}.product_category", "Category", {}, delta=False)] if categorie else [])
+            + [col("units_sold", "{t}.units_sold", "Units sold", ENT), col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR, recent=True)]
+            + ([part("revenue_share", "net_revenue_ht", "Share of revenue")] if part_ca else [])
+            + [col("return_rate", "{t}.units_returned / NULLIF({t}.units_sold, 0)", "Unit return rate", PCT, delta=False)])
 
 
 D_PRODUIT = "Website, excluding shipping. Unit return rate: returned units / sold units, for the orders of the period." + D_RECENT
 CARTES += [
     tableau("t_types", "Top 10 product types", S_PRODUCTS, TYPE_PRODUIT, "product_type", "Product type", PRODUIT_MESURES, colonnes_produit(), "net_revenue_ht", filtres=FILTRES_PRODUIT, limite=10, description=D_PRODUIT),
-    tableau("t_categories", "Top 10 categories", S_PRODUCTS, CATEGORIE, "product_category", "Category", PRODUIT_MESURES, colonnes_produit(), "net_revenue_ht", filtres=FILTRES_PRODUIT, limite=10, description=D_PRODUIT),
-    tableau("t_products", "Top 10 products", S_PRODUITS_NOMMES, "product_name", "product_name", "Product", PRODUIT_MESURES, colonnes_produit(), "net_revenue_ht", filtres=FILTRES_PRODUIT, limite=10, description=D_PRODUIT),
+    tableau("t_categories", "Top 10 categories", S_PRODUCTS, CATEGORIE, "product_category", "Category", PRODUIT_MESURES, colonnes_produit(part_ca=True), "net_revenue_ht", filtres=FILTRES_PRODUIT, limite=10, description=D_PRODUIT),
+    tableau("t_products", "Top 10 products", S_PRODUITS_NOMMES, "product_name", "product_name", "Product", PRODUIT_MESURES, colonnes_produit(part_ca=True, categorie=True), "net_revenue_ht", filtres=FILTRES_PRODUIT, limite=10,
+            textes={"product_category": f"MAX({CATEGORIE})"}, description=D_PRODUIT),
     tableau("t_models", "Top 10 models", S_MODELES, "product_family", "product_family", "Model", PRODUIT_MESURES, colonnes_produit(), "net_revenue_ht", filtres=FILTRES_PRODUIT, limite=10, description=D_PRODUIT),
     carte("e_revenue_type", "Gross revenue excl. tax by period and type", "\n".join([
         "WITH " + cte("top_types", "\n".join([f"SELECT {PRODUCTS}.product_type", f"FROM {PRODUCTS}", f"    JOIN utils.calendar ON utils.calendar.date = {PRODUCTS}.date",
@@ -512,6 +630,11 @@ CARTES += [
              col("retail_aov", "{t}.retail_revenue / NULLIF({t}.retail_orders, 0)", "AOV", EUR), col("retail_new_customers", "{t}.retail_new_customers", "New customers", ENT),
              col("retail_refund_value", "{t}.retail_refund_value", "Refunded amount", EUR, delta=False)],
             "retail_revenue", filtres=("store_id",), arret="boutique", limite=20, description=D_BOUTIQUE + " Stores shown by code, no store list available yet."),
+    web_et_boutique("e_web_retail_revenue", "Web and retail revenue by period (to last load)", "revenue", EUR,
+                    "SUM(revenue_ttc - refund_value_ttc)", "SUM(revenue - refund_value)",
+                    "Incl. tax, net of returns. Retail: Splio receipts, amounts as loaded. Web returns count on the date of the order and keep coming in for about 35 days."),
+    web_et_boutique("e_web_retail_new", "Web and retail new customers by period (to last load)", "new_customers", ENT,
+                    "SUM(new_customers_splio)", "SUM(new_customers)", "From Splio: the first order across all channels decides the channel that recruited the customer."),
     # ---- Cohortes et CRM ------------------------------------------------------------------------------------------------
     carte("t_cohorts", "New customer cohorts", f"""
 SELECT
@@ -581,7 +704,7 @@ KPI = 3
 ONGLETS = [
     ("Overview", BASE, [
         ("# Overview", 0, 0, 24, 2),
-        ("kpi_cost", 2, 0, 4, 2 * KPI),
+        ("kpi_cost", 2, 0, 4, KPI), ("kpi_refund_value_ttc", 5, 0, 4, KPI),
         ("kpi_total_orders", 2, 4, 4, KPI), ("kpi_blended_cac", 5, 4, 4, KPI),
         ("kpi_new_customers", 2, 8, 4, KPI), ("kpi_blended_ncac", 5, 8, 4, KPI),
         ("kpi_first_orders", 2, 12, 4, KPI), ("kpi_avg_order_value", 5, 12, 4, KPI),
@@ -594,31 +717,38 @@ ONGLETS = [
         ("### Focus on new customers", 25, 0, 24, 1),
         ("c_ncac", 26, 0, 12, 5), ("c_new_vs_first", 26, 12, 12, 5),
         ("c_new_cost", 31, 0, 24, 5),
-        ("t_markets", 36, 0, 24, 9),
+        ("t_media_countries", 36, 0, 24, 9),
     ]),
     ("Media & Traffic", BASE, [
         ("# Media", 0, 0, 24, 2),
         ("d_cost_platform", 2, 0, 8, 6), ("e_cost_platform", 2, 8, 16, 6),
         ("t_platforms", 8, 0, 24, 5),
-        ("# Traffic", 13, 0, 24, 2),
-        ("d_sessions_channel", 15, 0, 8, 6), ("e_sessions_channel", 15, 8, 16, 6),
-        ("t_channels", 21, 0, 24, 7),
+        ("t_delivery", 13, 0, 24, 5),
+        ("t_campaign_types", 18, 0, 24, 11),
+        ("t_campaigns", 29, 0, 24, 13),
+        ("# Traffic", 42, 0, 24, 2),
+        ("d_sessions_channel", 44, 0, 8, 6), ("e_sessions_channel", 44, 8, 16, 6),
+        ("t_channels", 50, 0, 24, 7),
     ]),
     ("Markets", BASE + ("market",), [
-        ("# Performance by market", 0, 0, 24, 2),
-        ("d_orders_market", 2, 0, 8, 6), ("e_orders_market", 2, 8, 16, 6),
-        ("d_revenue_market", 8, 0, 8, 6), ("e_revenue_market", 8, 8, 16, 6),
-        ("t_markets", 14, 0, 24, 9),
-        ("# Performance by country", 23, 0, 24, 2),
-        ("t_countries", 25, 0, 24, 12),
+        ("# Media and sales by country", 0, 0, 24, 2),
+        ("t_media_countries", 2, 0, 24, 9),
+        ("b_media_countries", 11, 0, 12, 8), ("t_media_share", 11, 12, 12, 8),
+        ("# Performance by market", 19, 0, 24, 2),
+        ("d_orders_market", 21, 0, 8, 6), ("e_orders_market", 21, 8, 16, 6),
+        ("d_revenue_market", 27, 0, 8, 6), ("e_revenue_market", 27, 8, 16, 6),
+        ("t_markets", 33, 0, 24, 9),
+        ("# Performance by shipping country", 42, 0, 24, 2),
+        ("t_countries", 44, 0, 24, 12),
     ]),
     ("Products", BASE + FILTRES_PRODUIT, [
         ("# Performance by product", 0, 0, 24, 2),
-        ("t_types", 2, 0, 12, 9), ("t_categories", 2, 12, 12, 9),
-        ("t_products", 11, 0, 12, 9), ("t_models", 11, 12, 12, 9),
-        ("e_revenue_type", 20, 0, 24, 6),
-        ("# Watch list", 26, 0, 24, 2),
-        ("t_declining", 28, 0, 12, 8), ("t_returned", 28, 12, 12, 8),
+        ("t_categories", 2, 0, 24, 9),
+        ("t_products", 11, 0, 24, 9),
+        ("t_types", 20, 0, 12, 9), ("t_models", 20, 12, 12, 9),
+        ("e_revenue_type", 29, 0, 24, 6),
+        ("# Watch list", 35, 0, 24, 2),
+        ("t_declining", 37, 0, 12, 8), ("t_returned", 37, 12, 12, 8),
     ]),
     ("Returns", BASE + ("market",), [
         ("# Returns", 0, 0, 24, 2),
@@ -631,6 +761,8 @@ ONGLETS = [
         ("kpi_retail_revenue", 2, 0, 5, KPI), ("kpi_retail_orders", 2, 5, 5, KPI), ("kpi_retail_aov", 2, 10, 4, KPI), ("kpi_retail_new_customers", 2, 14, 5, KPI), ("kpi_retail_refund_value", 2, 19, 5, KPI),
         ("c_retail", 5, 0, 24, 6),
         ("t_stores", 11, 0, 24, 15),
+        ("# Web and retail", 26, 0, 24, 2),
+        ("e_web_retail_revenue", 28, 0, 12, 7), ("e_web_retail_new", 28, 12, 12, 7),
     ]),
     ("Cohorts & CRM", (), [
         ("# Cohorts", 0, 0, 24, 2),
@@ -747,7 +879,10 @@ def parametres(periode, unite):
 
 
 def jouer(mb, did, dc, params):
-    r = http.post(mb, f"/api/dashboard/{did}/dashcard/{dc['id']}/card/{dc['card_id']}/query", json={"parameters": params}, timeout=300)
+    try:
+        r = http.post(mb, f"/api/dashboard/{did}/dashcard/{dc['id']}/card/{dc['card_id']}/query", json={"parameters": params}, timeout=300)
+    except http.MetabaseError as e:
+        return None, str(e)[:300]
     if r.get("error"):
         return None, str(r["error"])[:300]
     return r["data"], None
@@ -799,11 +934,15 @@ def controler_coherence(mb, did, d, params):
     depenses, ca, commandes, nouveaux = kpi_lu("Spend"), kpi_lu("Net revenue"), kpi_lu("Orders"), kpi_lu("New customers")
     # Le mois de contrôle précède la dernière semaine de Splio : sur janvier à septembre, aucune borne n'intervient.
     precedent = lire_sql(mb, f"SELECT SUM(orders) FROM {SALES} WHERE date BETWEEN DATEADD(day, -273, '2026-01-01'::DATE) AND '2025-12-31'::DATE")[0][0]
+    sessions = lire_sql(mb, f"SELECT SUM(sessions) FROM {TRAFFIC} WHERE client_id = '{CLIENT}' AND profile = '{GA4_GLOBALE}' AND date BETWEEN '2026-01-01' AND '2026-09-30'")[0][0]
     attendus = [("Blended ROAS", kpi_lu("Blended ROAS"), ca / depenses), ("Blended CAC", kpi_lu("Cost per order"), depenses / commandes),
                 ("New customer CAC", kpi_lu("New customer CAC"), depenses / nouveaux),
                 ("Total marchés CA", total_lu("Performance by market", "NET_REVENUE_HT"), ca), ("Total marchés commandes", total_lu("Performance by market", "TOTAL_ORDERS"), commandes),
                 ("Total plateformes", total_lu("Performance by platform", "COST"), depenses), ("Total retours", total_lu("Returns by market", "REFUND_VALUE_TTC"), kpi_lu("Refunded amount")),
                 ("Total magasins", total_lu("Top 20 stores", "RETAIL_REVENUE"), kpi_lu("Retail revenue")),
+                ("Total pays dépenses", total_lu("Media and sales by country", "COST"), depenses), ("Total pays CA", total_lu("Media and sales by country", "NET_REVENUE_HT"), ca),
+                ("Total pays commandes", total_lu("Media and sales by country", "TOTAL_ORDERS"), commandes), ("Total types de campagne", total_lu("Spend by campaign type", "COST"), depenses),
+                ("Sessions, propriété globale seule", total_lu("Traffic by channel", "TOTAL_SESSIONS"), float(sessions)),
                 ("Commandes période précédente", kpi_lu("Orders", 0), float(precedent))]
     ecarts = 0
     for nom, lu, attendu in attendus:
