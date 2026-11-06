@@ -14,14 +14,16 @@ CLIENT_DATA.SESSUN__* pour le reste. Les tables restent sans alias : Metabase é
 Décisions de Louis du 06/11/2026 : nouveaux clients Splio arrêtés au dernier chargement, sur deux périodes de même durée ;
 ROAS sur le CA HT net de retours ; filtre Marché hors de la Vue d'ensemble.
 Les dépenses se croisent aux ventes par pays de livraison : le pays de la campagne vient de campaign_location ou de son nom.
-Retours rattachés à la date de commande (spark-pipelines #1507) : ils mettent environ 35 jours à arriver, donc CA net, ROAS et
-taux de retour ne montrent aucune évolution sur une période plus récente.
+Retours rattachés à la date de commande (spark-pipelines #1507) : ils mettent environ 35 jours à arriver. Pour que les évolutions
+restent justes sur une période récente, la période de comparaison ne compte que les retours déjà arrivés au même âge (#1509).
 """
 import json
 import re
 import sys
 import textwrap
 import uuid
+
+from concurrent.futures import ThreadPoolExecutor
 
 from spark_metabase_api import cards, connect, dashboards, http
 
@@ -67,19 +69,20 @@ TYPES_C = {"Pantalon": "#6896E9", "Chemise": "#FC926D", "Robe": "#88BF4D", "Mant
 CANAUX_C = {"Paid social": "#E66775", "Paid search": "#FC926D", "Other": "#6896E9", "Organic": "#F7C41F", "Referral": "#A989C5", "AI assistants": "#EAB1E1", "Other paid": "#51B8A6"}
 
 
-def source(table, *portee):
-    return {"table": table, "portee": list(portee)}
+def source(table, *portee, retours=False):
+    """retours : la table porte refund_lag_days, donc la période de comparaison se lit à âge égal."""
+    return {"table": table, "portee": list(portee), "retours": retours}
 
 
-S_SALES = source(SALES)
+S_SALES = source(SALES, retours=True)
 S_MEDIA = source(MEDIA, f"{MEDIA}.client_id = '{CLIENT}' -- Sessùn")
 # La propriété GA4 globale cumule les 8 propriétés par pays (mesuré sur 2026 : corrélation quotidienne 0,99, 8,14 M contre 8,09 M) :
 # les additionner compte chaque session deux fois.
 GA4_GLOBALE = "284930543"
 S_TRAFFIC = source(TRAFFIC, f"{TRAFFIC}.client_id = '{CLIENT}' -- Sessùn", f"{TRAFFIC}.profile = '{GA4_GLOBALE}' -- propriété globale")
-S_PRODUCTS = source(PRODUCTS)
+S_PRODUCTS = source(PRODUCTS, retours=True)
 S_RETAIL = source(RETAIL)
-S_REASONS = source(REASONS)
+S_REASONS = source(REASONS, retours=True)
 
 # Splio et les tickets boutique sont chargés à la main, jusqu'à un mois de retard. Le dernier jour chargé est partiel
 # (mesuré : 33 commandes sur 117 le 13/10/2026), comme le dernier jour de GA4 : on s'arrête au dernier jour complet.
@@ -88,8 +91,14 @@ CHARGEMENTS = {
     "boutique": f"SELECT DATEADD(day, -1, MAX(date)) AS last_date\nFROM {RETAIL}",
     "trafic": f"SELECT DATEADD(day, -1, MAX(date)) AS last_date\nFROM {TRAFFIC}\nWHERE client_id = '{CLIENT}'\n    AND profile = '{GA4_GLOBALE}'",
 }
-# Les retours mettent environ 35 jours à arriver : plus récent, un CA net ne se compare pas.
-RECENT = "(SELECT current_end FROM periods) > DATEADD(day, -35, CURRENT_DATE)"
+
+
+def a_meme_age(s):
+    """Un retour de la période de comparaison ne compte que s'il était arrivé à l'âge qu'a aujourd'hui la commande équivalente."""
+    if not s.get("retours"):
+        return []
+    t = s["table"]
+    return [f"""({t}.refund_lag_days IS NULL OR {t}.refund_lag_days <= DATEDIFF(day, DATEADD(day, DATEDIFF(day, (SELECT comparison_start FROM periods), (SELECT current_start FROM periods)), {t}.date), CURRENT_DATE)) -- retours à âge égal"""]
 
 
 # ---- Fabrique de SQL ------------------------------------------------------------------------------------------------
@@ -116,6 +125,9 @@ def periodes(arret=None, fin_splio=False):
     """Bornes des deux périodes. arret : elles s'arrêtent au dernier chargement. fin_splio : colonne en plus pour Splio."""
     debut_cmp = "COALESCE(cmp.start_date, DATEADD(day, -(DATEDIFF(day, cur.start_date, cur.end_date) + 1), cur.start_date))"
     fin_cur = "LEAST(MAX(date), CURRENT_DATE, (SELECT last_date FROM last_load))" if arret else "LEAST(MAX(date), CURRENT_DATE)"
+    # Période entièrement après le dernier chargement : même durée, finissant au dernier chargement, plutôt qu'une tuile vide.
+    debut_cur = ("IFF(MIN(date) > (SELECT last_date FROM last_load), DATEADD(day, -DATEDIFF(day, MIN(date), LEAST(MAX(date), CURRENT_DATE)), (SELECT last_date FROM last_load)), MIN(date))"
+                 if arret else "MIN(date)")
     fin_cmp = (f"DATEADD(day, DATEDIFF(day, cur.start_date, cur.end_date), {debut_cmp})" if arret
                else "COALESCE(cmp.end_date, DATEADD(day, -1, cur.start_date))")
     colonnes = ["cur.start_date AS current_start", "cur.end_date AS current_end",
@@ -130,7 +142,7 @@ def periodes(arret=None, fin_splio=False):
                    "-- comparison_date vide : les N jours juste avant la période date.\n")
     return (commentaire + "SELECT\n" + ",\n".join("    " + c for c in colonnes) + f"""
 FROM (
-    SELECT MIN(date) AS start_date, {fin_cur} AS end_date
+    SELECT {debut_cur} AS start_date, {fin_cur} AS end_date
     FROM utils.calendar
     WHERE FALSE [[OR {{{{date}}}}]]
 ) AS cur,
@@ -161,7 +173,7 @@ def lecture_courante(s, colonnes, filtres=(), dims=(), arret=None):
 def lecture_precedente(s, colonnes, filtres=(), dims=()):
     t = s["table"]
     lignes = [clause_select(dims, colonnes), f"FROM {t}",
-              clause_where(s["portee"] + [f"{t}.date BETWEEN (SELECT comparison_start FROM periods) AND (SELECT comparison_end FROM periods)"], filtres)]
+              clause_where(s["portee"] + [f"{t}.date BETWEEN (SELECT comparison_start FROM periods) AND (SELECT comparison_end FROM periods)"] + a_meme_age(s), filtres)]
     return "\n".join(lignes + (["GROUP BY 1"] if dims else []))
 
 
@@ -184,7 +196,7 @@ def carte(cle, titre, sql, display, viz, description=None):
     return {"cle": cle, "titre": titre, "sql": sql.strip(), "display": display, "viz": viz, "description": description}
 
 
-def kpi(colonne, titre, sources, valeur, f, filtres=(), arret=None, inverse=False, description=None, recent=False):
+def kpi(colonne, titre, sources, valeur, f, filtres=(), arret=None, inverse=False, description=None):
     """Tuile tendance : deux lignes (comparaison puis période), comme Polène. sources : {alias: (source, {colonne: expression})}."""
     ctes = debut_periodes(arret)
     for alias, (s, colonnes) in sources.items():
@@ -192,8 +204,6 @@ def kpi(colonne, titre, sources, valeur, f, filtres=(), arret=None, inverse=Fals
         ctes.append(cte(f"previous_{alias}", lecture_precedente(s, colonnes, filtres)))
     courant = valeur.format(**{a: f"current_{a}" for a in sources})
     precedent = valeur.format(**{a: f"previous_{a}" for a in sources})
-    if recent:
-        precedent = f"IFF({RECENT}, NULL, {precedent})"
     sql = "WITH " + ",\n\n".join(ctes) + f"""
 
 -- Vraies dates conservées ; l'ordre (comparaison puis actuelle) est imposé par row_rank,
@@ -220,18 +230,19 @@ def serie(colonne, expr, titre, f, couleur, display="bar", courant=None):
 def combo(cle, titre, sources, series, arret=None, description=None, un_axe=False):
     """Période en cours contre période de comparaison, recalée sur les mêmes tranches. Mêmes bornes que les tuiles."""
     ctes = debut_periodes(arret)
-    borne = ["utils.calendar.date <= (SELECT current_end FROM periods)"] if arret else []
+    borne = ["utils.calendar.date BETWEEN (SELECT current_start FROM periods) AND (SELECT current_end FROM periods)"] if arret else []
+    tag_date = () if arret else ("date",)
     for alias, (s, colonnes) in sources.items():
         t = s["table"]
         dims = ["{{time_period}} AS time_period"]
         ctes.append(cte(f"current_{alias}", "\n".join([
             clause_select(dims, colonnes), f"FROM {t}", f"    JOIN utils.calendar ON utils.calendar.date = {t}.date",
-            clause_where(s["portee"] + borne, ("date",) + tuple(s.get("filtres", ()))),
+            clause_where(s["portee"] + borne, tag_date + tuple(s.get("filtres", ()))),
             "GROUP BY 1"])))
         ctes.append(cte(f"previous_{alias}", "\n".join([
             clause_select(dims, colonnes), f"FROM {t}", "    JOIN periods ON TRUE",
             f"    JOIN utils.calendar ON utils.calendar.date = DATEADD('day', DATEDIFF(day, periods.comparison_start, periods.current_start), {t}.date)",
-            clause_where(s["portee"] + [f"{t}.date BETWEEN periods.comparison_start AND periods.comparison_end"], tuple(s.get("filtres", ()))),
+            clause_where(s["portee"] + [f"{t}.date BETWEEN periods.comparison_start AND periods.comparison_end"] + a_meme_age(s), tuple(s.get("filtres", ()))),
             "GROUP BY 1"])))
     pilote = next(iter(sources))
     courants = {a: f"current_{a}" for a in sources}
@@ -285,8 +296,8 @@ def empile(cle, titre, s, dim, alias, mesure, colonne, f, filtres=(), couleurs=N
     return carte(cle, titre, sql, "bar", viz_empile(alias, colonne, f, couleurs), description)
 
 
-def col(alias, expr, titre, f, delta=True, mini=False, recent=False):
-    return {"alias": alias, "expr": expr, "titre": titre, "f": f, "delta": delta, "mini": mini, "recent": recent}
+def col(alias, expr, titre, f, delta=True, mini=False):
+    return {"alias": alias, "expr": expr, "titre": titre, "f": f, "delta": delta, "mini": mini}
 
 
 def part(alias, mesure, titre):
@@ -325,7 +336,7 @@ def tableau(cle, titre, s, dim, alias, titre_dim, mesures, colonnes, tri, filtre
         reglages[x["alias"]] = {**x["f"], "column_title": x["titre"], **({"show_mini_bar": True} if x["mini"] else {})}
         if x["delta"]:
             delta = f"({x['expr'].format(t='c')} - {x['expr'].format(t='p')}) / NULLIF(ABS({x['expr'].format(t='p')}), 0)"
-            lignes.append(f"{f'IFF({RECENT}, NULL, {delta})' if x['recent'] else delta} AS delta_{x['alias']}")
+            lignes.append(f"{delta} AS delta_{x['alias']}")
             affichees.append({"name": f"DELTA_{x['alias'].upper()}", "enabled": True})
             reglages[f"delta_{x['alias']}"] = {**PCT, "column_title": "Δ " + x["titre"]}
     conditions = ([] if plein else [f"c.{alias} IS NOT NULL"]) + list(ou)
@@ -374,25 +385,25 @@ TYPE_CAMPAGNE = f"{PLATEFORME} || ' / ' || INITCAP(REPLACE(campaign_category, '_
 TYPE_PRODUIT = "COALESCE(product_type, 'Not specified')"
 CATEGORIE = "INITCAP(REPLACE(REGEXP_REPLACE(product_category, '[0-9]+$', ''), '-', ' '))"
 FILTRES_PRODUIT = ("market", "product_type", "product_name")
-S_PRODUITS_NOMMES = source(PRODUCTS, f"{PRODUCTS}.product_name <> 'unknown'")
-S_MODELES = source(PRODUCTS, f"{PRODUCTS}.product_family IS NOT NULL")
+S_PRODUITS_NOMMES = source(PRODUCTS, f"{PRODUCTS}.product_name <> 'unknown'", retours=True)
+S_MODELES = source(PRODUCTS, f"{PRODUCTS}.product_family IS NOT NULL", retours=True)
 
-D_NOUVEAUX = "First order across all channels, from Splio: a customer who already bought in store does not count. Stops at the last Splio load, and the comparison covers the same number of days."
+D_NOUVEAUX = "First order across all channels, from Splio: a customer who already bought in store does not count. Stops at the last Splio load: a period after it falls back on the same number of days up to that load, and the comparison covers the same number of days."
 D_PREMIERES = "First order seen on the website, updated daily. Also counts customers who already bought in store, so it runs higher than Splio new customers."
-D_RECENT = " Returns take about 35 days to come in: figures are provisional and show no change until then."
+D_RECENT = " Returns take about 35 days to come in, so the latest figures are provisional. The comparison only counts returns that had already arrived at the same age, so the change stays like for like."
 D_NET = "Website sales minus tax and returns, shipping included. A refund counts on the date of its order." + D_RECENT
 D_RETOUR = "Refunded amount / gross revenue incl. tax, for the orders of the period." + D_RECENT
 D_P1 = "Previous: the same days in the comparison period, by default the period just before."
 D_PAYS = ("Spend by country targeted, read from the campaign, against website sales by shipping country. Other: every other country, "
-          "where a campaign may still deliver sales (a German campaign can sell in Austria). Not affected by the Market filter." + D_RECENT)
+          "where no campaign is aimed but sales still come in (a German campaign can sell in Austria), so ROAS and CAC have no meaning there. Not affected by the Market filter." + D_RECENT)
 D_DECLARE = "Purchases and revenue as reported by each platform, under its own attribution rules."
 D_NOUVEAUX_CA = ("Website net revenue excl. tax of first orders according to Splio. Existing: orders of customers who already bought, on any channel. "
                  "Not found in Splio: about 4% of orders have no receipt there. Stops at the last Splio load." + D_RECENT)
-D_REMISE = "Website, excluding shipping. On discount: lines with a discount rate above zero in the order detail, whatever the operation (sales, private sales, codes)."
+D_REMISE = "Website, excluding shipping. On discount: lines with a discount rate above zero in the order detail, whatever the operation (sales, private sales, codes). Shows 0% when nothing was sold on discount over the period."
 D_MOTIFS = "Reason given in the return form, for the orders of the period. Not specified: returns without a reason, 6 to 13% of lines depending on the month." + D_RECENT
 D_COHORTE = ("Web customers recruited that month, from Splio: first purchase across all channels on the website. LTV: average cumulative revenue per customer, incl. tax, net of returns. "
              "Repurchase: share of customers with at least 2 orders by then. An empty cell means the cohort has not reached that age yet.")
-D_BOUTIQUE = "Splio receipts, amounts as loaded, tax not available. Stops at the last load, and the comparison covers the same number of days."
+D_BOUTIQUE = "Splio receipts, amounts as loaded, tax not available. Stops at the last load: a period after it falls back on the same number of days up to that load, and the comparison covers the same number of days."
 
 SEGMENT = """CASE segments.rfm_segment
         WHEN 'Fidèles' THEN 'Loyal'
@@ -414,11 +425,11 @@ def tableau_pays(cle, titre, colonnes, tri, description):
     ventes = {"net_revenue_ht": NET_HT, "total_orders": "SUM(orders)", "revenue_ttc": "SUM(revenue_ttc)"}
     joindre = """SELECT
     COALESCE(media.country_group, sales.country_group) AS country_group,
-    media.cost,
-    media.cost_splio,
-    sales.net_revenue_ht,
-    sales.total_orders,
-    sales.revenue_ttc,
+    COALESCE(media.cost, 0) AS cost,
+    COALESCE(media.cost_splio, 0) AS cost_splio,
+    COALESCE(sales.net_revenue_ht, 0) AS net_revenue_ht,
+    COALESCE(sales.total_orders, 0) AS total_orders,
+    COALESCE(sales.revenue_ttc, 0) AS revenue_ttc,
     sales.new_customers
 FROM {p}_media AS media
     FULL JOIN {p}_sales AS sales ON sales.country_group = media.country_group"""
@@ -434,11 +445,12 @@ FROM {p}_media AS media
 
 def empile_lectures(cle, titre, colonne, f, alias, lectures, couleurs, description, chargement=None, filtres=()):
     """Barres empilées dont chaque couleur vient de sa propre lecture : (table, libellé, mesure)."""
-    borne = ["utils.calendar.date <= (SELECT last_date FROM last_load)"] if chargement else []
+    borne = ["utils.calendar.date BETWEEN (SELECT current_start FROM periods) AND (SELECT current_end FROM periods)"] if chargement else []
+    tags = (() if chargement else ("date",)) + tuple(filtres)
     lire = lambda t, nom, mesure: "\n".join([
         clause_select(["{{time_period}} AS time_period", f"'{nom}' AS {alias}"], {colonne: mesure}), f"FROM {t}", f"    JOIN utils.calendar ON utils.calendar.date = {t}.date",
-        clause_where(borne, ("date",) + tuple(filtres)), "GROUP BY 1, 2"])
-    debut = "WITH " + cte("last_load", CHARGEMENTS[chargement]) + "\n\n" if chargement else ""
+        clause_where(borne, tags), "GROUP BY 1, 2"])
+    debut = "WITH " + ",\n\n".join(debut_periodes(chargement)) + "\n\n" if chargement else ""
     sql = debut + "\nUNION ALL\n".join(lire(*x) for x in lectures) + f"\nORDER BY time_period ASC, {colonne} ASC"
     return carte(cle, titre, sql, "bar", viz_empile(alias, colonne, f, couleurs), description)
 
@@ -484,16 +496,16 @@ def cohortes_mensuelles(cle, titre, origine, description, avec_depenses=False):
     ctes = "WITH " + cte("spend", DEPENSES_MOIS) + "\n\n" if avec_depenses else ""
     cout = [f"spend.cost / NULLIF({MONTHLY}.customers, 0) AS acquisition_cost"] if avec_depenses else []
     fin = [f"ltv_m3 / NULLIF(spend.cost / NULLIF({MONTHLY}.customers, 0), 0) AS return_m3"] if avec_depenses else []
-    lignes = [f"TO_VARCHAR({MONTHLY}.cohort_month, 'MMMM YYYY') AS first_purchase", f"{MONTHLY}.customers"] + cout + ["ltv_m3", "ltv_m6", "ltv_m12", "ltv_m24", "repurchase_rate_m6", "repurchase_rate_m12"] + fin
+    lignes = [f"TO_VARCHAR({MONTHLY}.cohort_month, 'MMMM YYYY') AS first_purchase", f"{MONTHLY}.customers"] + cout + ["ltv_m3", "ltv_m6", "ltv_m12", "repurchase_rate_m6", "repurchase_rate_m12"] + fin
     sql = ctes + "SELECT\n" + ",\n".join("    " + l for l in lignes) + f"\nFROM {MONTHLY}" + (f"\n    LEFT JOIN spend ON spend.cohort_month = {MONTHLY}.cohort_month" if avec_depenses else "")
     sql += f"\nWHERE origine = '{origine}'\n    AND {MONTHLY}.cohort_month >= {DEBUT_DEPENSES}\nORDER BY {MONTHLY}.cohort_month DESC"
     reglages = {"first_purchase": {"column_title": "First purchase"}, "customers": {**ENT, "column_title": "New customers"},
-                "ltv_m3": {**EUR, "column_title": "LTV at 3 months"}, "ltv_m6": {**EUR, "column_title": "LTV at 6 months"}, "ltv_m12": {**EUR, "column_title": "LTV at 12 months"}, "ltv_m24": {**EUR, "column_title": "LTV at 24 months"},
+                "ltv_m3": {**EUR, "column_title": "LTV at 3 months"}, "ltv_m6": {**EUR, "column_title": "LTV at 6 months"}, "ltv_m12": {**EUR, "column_title": "LTV at 12 months"},
                 "repurchase_rate_m6": {**PCT, "column_title": "Repurchase at 6 months"}, "repurchase_rate_m12": {**PCT, "column_title": "Repurchase at 12 months"}}
     if avec_depenses:
         reglages.update({"acquisition_cost": {**EUR, "column_title": "Acquisition cost"}, "return_m3": {**FOIS, "column_title": "Return at 3 months"}})
     chauffe = [{"id": i, "columns": [c.upper()], "type": "range", "colors": ["#FFFFFF", "#6896E9"], "min_type": None, "max_type": None, "min_value": 0, "max_value": 100, "highlight_row": False}
-               for i, c in enumerate(["ltv_m3", "ltv_m6", "ltv_m12", "ltv_m24"])]
+               for i, c in enumerate(["ltv_m3", "ltv_m6", "ltv_m12"])]
     return carte(cle, titre, sql, "table", {"table.column_formatting": chauffe, **formats(reglages)}, description)
 
 
@@ -509,12 +521,12 @@ CARTES = [
     kpi("blended_ncac", "New customer CAC", {**M, "sales": (S_SALES, {"new_customers": "SUM(new_customers_splio)"})}, "{media}.cost / NULLIF({sales}.new_customers, 0)", EUR, arret="splio", inverse=True, description="Spend / Splio new customers, on the days covered by the last load."),
     kpi("first_orders", "First orders", {"sales": (S_SALES, {"first_orders": "SUM(first_orders_web)"})}, "{sales}.first_orders", ENT, description=D_PREMIERES),
     kpi("avg_order_value", "AOV incl. tax", {"sales": (S_SALES, {"revenue_ttc": "SUM(revenue_ttc)", "total_orders": "SUM(orders)"})}, "{sales}.revenue_ttc / NULLIF({sales}.total_orders, 0)", EUR, description="Gross revenue incl. tax / orders."),
-    kpi("net_revenue_ht", "Net revenue", V, "{sales}.net_revenue_ht", EUR, filtres=("market",), description=D_NET, recent=True),
-    kpi("blended_roas", "Blended ROAS", {**V, **M}, "{sales}.net_revenue_ht / NULLIF({media}.cost, 0)", DEC, description="Net revenue excl. tax / spend." + D_RECENT, recent=True),
+    kpi("net_revenue_ht", "Net revenue", V, "{sales}.net_revenue_ht", EUR, filtres=("market",), description=D_NET),
+    kpi("blended_roas", "Blended ROAS", {**V, **M}, "{sales}.net_revenue_ht / NULLIF({media}.cost, 0)", DEC, description="Net revenue excl. tax / spend." + D_RECENT),
     kpi("revenue_ttc", "Gross revenue", {"sales": (S_SALES, {"revenue_ttc": "SUM(revenue_ttc)"})}, "{sales}.revenue_ttc", EUR, description="Website sales, tax and shipping included, before returns."),
-    kpi("return_rate", "Return rate", {"sales": (S_SALES, {"refund_value_ttc": "SUM(refund_value_ttc)", "revenue_ttc": "SUM(revenue_ttc)"})}, "{sales}.refund_value_ttc / NULLIF({sales}.revenue_ttc, 0)", PCT, filtres=("market",), inverse=True, description=D_RETOUR, recent=True),
-    kpi("refund_value_ttc", "Refunded amount", {"sales": (S_SALES, {"refund_value_ttc": "SUM(refund_value_ttc)"})}, "{sales}.refund_value_ttc", EUR, filtres=("market",), inverse=True, description="Website refunds incl. tax, on the date of their order." + D_RECENT, recent=True),
-    kpi("total_refunds", "Refunds", {"sales": (S_SALES, {"total_refunds": "SUM(refunds)"})}, "{sales}.total_refunds", ENT, filtres=("market",), inverse=True, description="Number of website refunds, on the date of their order." + D_RECENT, recent=True),
+    kpi("return_rate", "Return rate", {"sales": (S_SALES, {"refund_value_ttc": "SUM(refund_value_ttc)", "revenue_ttc": "SUM(revenue_ttc)"})}, "{sales}.refund_value_ttc / NULLIF({sales}.revenue_ttc, 0)", PCT, filtres=("market",), inverse=True, description=D_RETOUR),
+    kpi("refund_value_ttc", "Refunded amount", {"sales": (S_SALES, {"refund_value_ttc": "SUM(refund_value_ttc)"})}, "{sales}.refund_value_ttc", EUR, filtres=("market",), inverse=True, description="Website refunds incl. tax, on the date of their order." + D_RECENT),
+    kpi("total_refunds", "Refunds", {"sales": (S_SALES, {"total_refunds": "SUM(refunds)"})}, "{sales}.total_refunds", ENT, filtres=("market",), inverse=True, description="Number of website refunds, on the date of their order." + D_RECENT),
     # ---- Vue d'ensemble : évolutions --------------------------------------------------------------------------------------
     combo("c_orders_revenue", "Orders and net revenue by period", {"sales": (S_SALES, {"net_revenue_ht": NET_HT, "total_orders": "SUM(orders)"})},
           [serie("total_orders", "{sales}.total_orders", "Orders", ENT, "orders"),
@@ -539,8 +551,8 @@ CARTES = [
     combo("c_new_cost", "New customers and spend by period (to last Splio load)", {"sales": (S_SALES, {"new_customers": "SUM(new_customers_splio)"}), **M},
           [serie("new_customers", "{sales}.new_customers", "New customers", ENT, "new"),
            serie("cost", "{media}.cost", "Spend", EUR, "spend", "line")], arret="splio", description=D_NOUVEAUX),
-    kpi("new_customer_revenue", "New customer net revenue", {"sales": (S_SALES, {"new_net": "SUM(new_customer_net_revenue_ht)"})}, "{sales}.new_net", EUR, arret="splio", recent=True, description=D_NOUVEAUX_CA),
-    kpi("new_customer_share", "New customer share of net revenue", {"sales": (S_SALES, {"new_net": "SUM(new_customer_net_revenue_ht)", "net_revenue_ht": NET_HT})}, "{sales}.new_net / NULLIF({sales}.net_revenue_ht, 0)", PCT, arret="splio", recent=True, description=D_NOUVEAUX_CA),
+    kpi("new_customer_revenue", "New customer net revenue", {"sales": (S_SALES, {"new_net": "SUM(new_customer_net_revenue_ht)"})}, "{sales}.new_net", EUR, arret="splio", description=D_NOUVEAUX_CA),
+    kpi("new_customer_share", "New customer share of net revenue", {"sales": (S_SALES, {"new_net": "SUM(new_customer_net_revenue_ht)", "net_revenue_ht": NET_HT})}, "{sales}.new_net / NULLIF({sales}.net_revenue_ht, 0)", PCT, arret="splio", description=D_NOUVEAUX_CA),
     empile_lectures("e_new_existing", "Net revenue from new and existing customers by period (to last Splio load)", "net_revenue_ht", EUR, "customer_group",
                     [(SALES, "New customers", "SUM(new_customer_net_revenue_ht)"), (SALES, "Existing customers", "SUM(net_revenue_ht_in_splio - new_customer_net_revenue_ht)"), (SALES, "Not found in Splio", f"SUM(revenue_ht - refund_value_ht - net_revenue_ht_in_splio)")],
                     CLIENTS_C, D_NOUVEAUX_CA, chargement="splio"),
@@ -548,7 +560,7 @@ CARTES = [
     tableau("t_markets", "Performance by market", S_SALES, "market", "market", "Market",
             {"net_revenue_ht": NET_HT, "total_orders": "SUM(orders)", "revenue_ttc": "SUM(revenue_ttc)", "new_customers": f"SUM(IFF({SALES}.date BETWEEN (SELECT comparison_start_splio FROM periods) AND (SELECT comparison_end_splio FROM periods), new_customers_splio, NULL))",
              "first_orders": "SUM(first_orders_web)", "refund_value_ttc": "SUM(refund_value_ttc)"},
-            [col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR, recent=True), col("total_orders", "{t}.total_orders", "Orders", ENT),
+            [col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR), col("total_orders", "{t}.total_orders", "Orders", ENT),
              col("avg_order_value", "{t}.revenue_ttc / NULLIF({t}.total_orders, 0)", "AOV incl. tax", EUR, delta=False), col("new_customers", "{t}.new_customers", "New customers (Splio)", ENT),
              col("first_orders", "{t}.first_orders", "First orders", ENT, delta=False), col("return_rate", "{t}.refund_value_ttc / NULLIF({t}.revenue_ttc, 0)", "Return rate", PCT, delta=False)],
             "net_revenue_ht", filtres=("market",), fin_splio=True,
@@ -562,14 +574,14 @@ CARTES = [
     empile("e_revenue_market", "Gross revenue by period and market", S_SALES, "market", "market", "SUM(revenue_ttc)", "revenue_ttc", EUR, ("market",), couleurs=MARCHES_C, description="Revenue incl. tax, before returns."),
     tableau("t_countries", "Performance by shipping country", S_SALES, "country", "country", "Country",
             {"net_revenue_ht": NET_HT, "total_orders": "SUM(orders)", "revenue_ttc": "SUM(revenue_ttc)"},
-            [col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR, recent=True), col("total_orders", "{t}.total_orders", "Orders", ENT),
+            [col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR), col("total_orders", "{t}.total_orders", "Orders", ENT),
              col("avg_order_value", "{t}.revenue_ttc / NULLIF({t}.total_orders, 0)", "AOV incl. tax", EUR)],
             "net_revenue_ht", filtres=("market",), limite=20, description=D_NET),
     tableau_pays("t_media_countries", "Media and sales by country", [
-        col("cost", "{t}.cost", "Spend", EUR), col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR, recent=True),
-        col("blended_roas", "{t}.net_revenue_ht / NULLIF({t}.cost, 0)", "Blended ROAS", DEC, recent=True), col("total_orders", "{t}.total_orders", "Orders", ENT, delta=False),
+        col("cost", "{t}.cost", "Spend", EUR), col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR),
+        col("blended_roas", "{t}.net_revenue_ht / NULLIF({t}.cost, 0)", "Blended ROAS", DEC), col("total_orders", "{t}.total_orders", "Orders", ENT, delta=False),
         col("avg_order_value", "{t}.revenue_ttc / NULLIF({t}.total_orders, 0)", "AOV incl. tax", EUR, delta=False), col("new_customers", "{t}.new_customers", "New customers (Splio)", ENT),
-        col("blended_ncac", "{t}.cost_splio / NULLIF({t}.new_customers, 0)", "New customer CAC", EUR)], "cost", D_PAYS),
+        col("blended_ncac", "NULLIF({t}.cost_splio, 0) / NULLIF({t}.new_customers, 0)", "New customer CAC", EUR)], "cost", D_PAYS),
     tableau_pays("t_media_share", "Share of spend against share of revenue", [
         part("cost_share", "cost", "Share of spend"), part("revenue_share", "net_revenue_ht", "Share of net revenue"),
         col("share_gap", "100 * (c.cost / NULLIF(SUM(IFF(c.rank = 2, c.cost, 0)) OVER (), 0) - c.net_revenue_ht / NULLIF(SUM(IFF(c.rank = 2, c.net_revenue_ht, 0)) OVER (), 0))", "Gap", PTS, delta=False)],
@@ -581,8 +593,8 @@ CARTES = [
         "",
         "SELECT",
         "    COALESCE(media.country_group, sales.country_group) AS country_group,",
-        "    media.cost,",
-        "    sales.net_revenue_ht",
+        "    COALESCE(media.cost, 0) AS cost,",
+        "    COALESCE(sales.net_revenue_ht, 0) AS net_revenue_ht",
         "FROM media",
         "    FULL JOIN sales ON sales.country_group = media.country_group",
         "ORDER BY sales.net_revenue_ht DESC NULLS LAST"]), "bar",
@@ -629,7 +641,7 @@ PRODUIT_MESURES = {"units_sold": "SUM(units_sold)", "net_revenue_ht": NET_HT, "u
 
 def colonnes_produit(part_ca=False, categorie=False, remise=False):
     return (([col("product_category", "{t}.product_category", "Category", {}, delta=False)] if categorie else [])
-            + [col("units_sold", "{t}.units_sold", "Units sold", ENT), col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR, recent=True)]
+            + [col("units_sold", "{t}.units_sold", "Units sold", ENT), col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR)]
             + ([part("revenue_share", "net_revenue_ht", "Share of revenue")] if part_ca else [])
             + ([col("discount_share", "{t}.revenue_ht_discounted / NULLIF({t}.revenue_ht, 0)", "Sold on discount", PCT, delta=False)] if remise else [])
             + [col("return_rate", "{t}.units_returned / NULLIF({t}.units_sold, 0)", "Unit return rate", PCT, delta=False)])
@@ -665,13 +677,13 @@ CARTES += [
              col("return_rate", "{t}.units_returned / NULLIF({t}.units_sold, 0)", "Unit return rate", PCT, delta=False)],
             "units_returned", filtres=FILTRES_PRODUIT, total=False, limite=10, description="Ranked by units returned, for the orders of the period." + D_RECENT),
     kpi("discount_share", "Revenue on discount", {"products": (S_PRODUCTS, {"revenue_ht": "SUM(revenue_ht)", "revenue_ht_discounted": "SUM(revenue_ht_discounted)"})},
-        "{products}.revenue_ht_discounted / NULLIF({products}.revenue_ht, 0)", PCT, filtres=FILTRES_PRODUIT, inverse=True, description=D_REMISE + " Share of revenue excl. tax, before returns."),
+        "COALESCE({products}.revenue_ht_discounted / NULLIF({products}.revenue_ht, 0), 0)", PCT, filtres=FILTRES_PRODUIT, inverse=True, description=D_REMISE + " Share of revenue excl. tax, before returns."),
     kpi("average_discount", "Average discount", {"products": (S_PRODUCTS, {"list_revenue_ht": "SUM(list_revenue_ht_discounted)", "revenue_ht_discounted": "SUM(revenue_ht_discounted)"})},
-        "1 - {products}.revenue_ht_discounted / NULLIF({products}.list_revenue_ht, 0)", PCT, filtres=FILTRES_PRODUIT, inverse=True, description=D_REMISE + " Average discount off the list price, on discounted lines."),
+        "COALESCE(1 - {products}.revenue_ht_discounted / NULLIF({products}.list_revenue_ht, 0), 0)", PCT, filtres=FILTRES_PRODUIT, inverse=True, description=D_REMISE + " Average discount off the list price, on discounted lines."),
     kpi("return_rate_discounted", "Unit return rate on discount", {"products": (S_PRODUCTS, {"units_returned": "SUM(units_returned_discounted)", "units_sold": "SUM(units_sold_discounted)"})},
-        "{products}.units_returned / NULLIF({products}.units_sold, 0)", PCT, filtres=FILTRES_PRODUIT, inverse=True, recent=True, description=D_REMISE + D_RECENT),
+        "COALESCE({products}.units_returned / NULLIF({products}.units_sold, 0), 0)", PCT, filtres=FILTRES_PRODUIT, inverse=True, description=D_REMISE + D_RECENT),
     kpi("return_rate_full_price", "Unit return rate at full price", {"products": (S_PRODUCTS, {"units_returned": "SUM(units_returned - units_returned_discounted)", "units_sold": "SUM(units_sold - units_sold_discounted)"})},
-        "{products}.units_returned / NULLIF({products}.units_sold, 0)", PCT, filtres=FILTRES_PRODUIT, inverse=True, recent=True, description=D_REMISE + D_RECENT),
+        "COALESCE({products}.units_returned / NULLIF({products}.units_sold, 0), 0)", PCT, filtres=FILTRES_PRODUIT, inverse=True, description=D_REMISE + D_RECENT),
     empile_lectures("e_discount", "Revenue excl. tax at full price and on discount by period", "revenue_ht", EUR, "price_level",
                     [(PRODUCTS, "Full price", "SUM(revenue_ht - revenue_ht_discounted)"), (PRODUCTS, "On discount", "SUM(revenue_ht_discounted)")], REMISES_C, D_REMISE + " Before returns.", filtres=FILTRES_PRODUIT),
     # ---- Retours ------------------------------------------------------------------------------------------------------
@@ -693,17 +705,17 @@ CARTES += [
           {"graph.dimensions": ["STEP"], "graph.metrics": ["AMOUNT"], "graph.x_axis.scale": "ordinal", "waterfall.show_total": True, "graph.show_values": True,
            "graph.x_axis.labels_enabled": False, "graph.y_axis.labels_enabled": False, "graph.label_value_formatting": "compact", **formats({"amount": sur_graphique(EUR)})}, D_NET),
     combo("c_refunds_rate", "Refunded amount and return rate by order period", {"sales": (dict(S_SALES, filtres=("market",)), {"refund_value_ttc": "SUM(refund_value_ttc)", "revenue_ttc": "SUM(revenue_ttc)"})},
-          [serie("refund_value_ttc", "{sales}.refund_value_ttc", "Refunded amount", EUR, "refund", courant="IFF({sales}.time_period > DATEADD(day, -35, CURRENT_DATE), NULL, {sales}.refund_value_ttc)"),
-           serie("return_rate", "{sales}.refund_value_ttc / NULLIF({sales}.revenue_ttc, 0)", "Return rate", PCT, "rate", "line", courant="IFF({sales}.time_period > DATEADD(day, -35, CURRENT_DATE), NULL, {sales}.refund_value_ttc / NULLIF({sales}.revenue_ttc, 0))")],
-          description="Orders of the last 35 days are not shown: their returns are still coming in."),
+          [serie("refund_value_ttc", "{sales}.refund_value_ttc", "Refunded amount", EUR, "refund"),
+           serie("return_rate", "{sales}.refund_value_ttc / NULLIF({sales}.revenue_ttc, 0)", "Return rate", PCT, "rate", "line")],
+          description="Refunds count on the date of their order." + D_RECENT),
     tableau("t_returns", "Returns by market", S_SALES, "market", "market", "Market",
             {"revenue_ttc": "SUM(revenue_ttc)", "refund_value_ttc": "SUM(refund_value_ttc)", "total_refunds": "SUM(refunds)"},
-            [col("revenue_ttc", "{t}.revenue_ttc", "Gross revenue", EUR), col("refund_value_ttc", "{t}.refund_value_ttc", "Refunded amount", EUR, recent=True),
-             col("total_refunds", "{t}.total_refunds", "Refunds", ENT, recent=True), col("return_rate", "{t}.refund_value_ttc / NULLIF({t}.revenue_ttc, 0)", "Return rate", PCT, recent=True)],
+            [col("revenue_ttc", "{t}.revenue_ttc", "Gross revenue", EUR), col("refund_value_ttc", "{t}.refund_value_ttc", "Refunded amount", EUR),
+             col("total_refunds", "{t}.total_refunds", "Refunds", ENT), col("return_rate", "{t}.refund_value_ttc / NULLIF({t}.revenue_ttc, 0)", "Return rate", PCT)],
             "revenue_ttc", filtres=("market",), description=D_RETOUR),
     donut("d_reason_family", "Return reasons by family", S_REASONS, "reason_family", "reason_family", "SUM(units_returned)", "units_returned", ENT, ("market",), D_MOTIFS, MOTIFS_C),
     tableau("t_reasons", "Return reasons", S_REASONS, "reason", "reason", "Reason", {"units_returned": "SUM(units_returned)", "refund_value_ttc": "SUM(refund_value_ttc)"},
-            [col("units_returned", "{t}.units_returned", "Units returned", ENT, recent=True), part("units_share", "units_returned", "Share of units"),
+            [col("units_returned", "{t}.units_returned", "Units returned", ENT), part("units_share", "units_returned", "Share of units"),
              col("refund_value_ttc", "{t}.refund_value_ttc", "Refunded amount", EUR, delta=False), col("reason_family", "{t}.reason_family", "Family", {}, delta=False)], "units_returned", filtres=("market",), textes={"reason_family": "MAX(reason_family)"}, description=D_MOTIFS),
     tableau("t_reason_types", "Return reasons by product type", S_REASONS, "COALESCE(product_type, 'Not specified')", "product_type", "Product type",
             {"units_returned": "SUM(units_returned)", "cut": "SUM(IFF(reason = 'The cut doesn''t suit me', units_returned, 0))", "too_large": "SUM(IFF(reason = 'The product is too large', units_returned, 0))",
@@ -1028,9 +1040,12 @@ def ecrire_dashboard(mb, ids):
 
 
 # ---- Contrôle -------------------------------------------------------------------------------------------------------
-def parametres(periode, unite):
-    return [{"id": PARAM["date"], "type": "date/all-options", "value": periode, "target": ["dimension", ["template-tag", "date"], {"stage-number": 0}]},
-            {"id": PARAM["time_period"], "type": "temporal-unit", "value": unite, "target": ["dimension", ["template-tag", "time_period"], {"stage-number": 0}]}]
+def parametres(periode, unite, comparaison=None):
+    params = [{"id": PARAM["date"], "type": "date/all-options", "value": periode, "target": ["dimension", ["template-tag", "date"], {"stage-number": 0}]},
+              {"id": PARAM["time_period"], "type": "temporal-unit", "value": unite, "target": ["dimension", ["template-tag", "time_period"], {"stage-number": 0}]}]
+    if comparaison:
+        params.append({"id": PARAM["comparison_date"], "type": "date/all-options", "value": comparaison, "target": ["dimension", ["template-tag", "comparison_date"], {"stage-number": 0}]})
+    return params
 
 
 def jouer(mb, did, dc, params):
@@ -1050,21 +1065,26 @@ def lire_sql(mb, sql):
     return r["data"]["rows"]
 
 
-def controler_tuiles(mb, did, d, params, libelle):
-    """Joue chaque tuile comme le dashboard. Une tuile vide ou en erreur est un échec, pas une note."""
+def controler_tuiles(mb, did, d, params, libelle, tolerees=()):
+    """Joue chaque tuile comme le dashboard. Erreur, tuile vide, colonne entièrement vide ou chiffre clé sans valeur : échec.
+
+    Une colonne vide passait inaperçue, alors qu'elle se lit à l'écran comme une panne. tolerees : colonnes vides attendues sur ce réglage.
+    """
     onglets = {t["id"]: t["name"] for t in d["tabs"]}
+    tuiles = [x for x in d["dashcards"] if x.get("card_id")]
+    with ThreadPoolExecutor(8) as ex:
+        resultats = list(ex.map(lambda dc: jouer(mb, did, dc, params), tuiles))
     echecs = 0
-    for dc in sorted(d["dashcards"], key=lambda x: ([t["id"] for t in d["tabs"]].index(x["dashboard_tab_id"]), x["row"], x["col"])):
-        if not dc.get("card_id"):
-            continue
+    for dc, (data, err) in zip(tuiles, resultats):
         titre = dc["visualization_settings"].get("card.title") or ""
-        data, err = jouer(mb, did, dc, params)
-        lignes = data["rows"] if data else []
-        vide = not lignes or all(v is None for l in lignes for v in l)
-        if err or vide:
+        lignes, noms = (data["rows"], [c["name"] for c in data["cols"]]) if data else ([], [])
+        vides = [n for i, n in enumerate(noms) if lignes and n not in tolerees and all(l[i] is None for l in lignes)]
+        cle = next((c for c in CARTES if c["titre"] == titre), None)
+        tendance_sans_valeur = bool(cle and cle["display"] == "smartscalar" and lignes and any(l[-1] is None for l in lignes))
+        if err or not lignes or vides or tendance_sans_valeur:
             echecs += 1
-            print(f"  {libelle} {onglets[dc['dashboard_tab_id']][:16]:16} {titre[:48]:48} {'ERREUR ' + err if err else 'VIDE'}")
-    print(f"{libelle} : {echecs} tuile(s) en échec sur {sum(1 for x in d['dashcards'] if x.get('card_id'))}")
+            print(f"  {libelle} {onglets[dc['dashboard_tab_id']][:16]:16} {titre[:48]:48} {'ERREUR ' + err if err else 'VIDE' if not lignes else 'colonnes vides : ' + ', '.join(vides) if vides else 'tendance sans valeur'}")
+    print(f"{libelle} : {echecs} tuile(s) en échec sur {len(tuiles)}")
     return echecs
 
 
@@ -1127,19 +1147,38 @@ SELECT
 FROM b""")[0]
     ok = float(avant[1]) == float(attendu[0]) and float(apres[1]) == float(attendu[1])
     print(f"  arrêt Splio : {avant[0][:10]} {avant[1]} puis {apres[0][:10]} {apres[1]}, attendu {attendu[0]} puis {attendu[1]} {'OK' if ok else 'KO'}")
-    net = next(x for x in d["dashcards"] if x.get("card_id") and x["visualization_settings"].get("card.title") == "Net revenue")
-    lignes = jouer(mb, did, net, parametres("past30days", "week"))[0]["rows"]
-    recent_ok = lignes[0][1] is None and lignes[1][1] is not None
-    print(f"  pas d'évolution sous 35 jours : {lignes[0][1]} puis {lignes[1][1]} {'OK' if recent_ok else 'KO'}")
-    return (0 if ok else 1) + (0 if recent_ok else 1)
+    return 0 if ok else 1
+
+
+def controler_age(mb, did, d):
+    """À âge égal, la comparaison retire des retours pas encore arrivés : son CA net est au moins le CA net complet, et son taux de retour au plus."""
+    params = parametres("past30days", "week", "2026-09-01~2026-09-30")
+    def lu(titre):
+        dc = next(x for x in d["dashcards"] if x.get("card_id") and x["visualization_settings"].get("card.title") == titre)
+        data, err = jouer(mb, did, dc, params)
+        if err:
+            raise ValueError(f"{titre} : {err}")
+        return float(data["rows"][0][1])
+    net, retours = lu("Net revenue"), lu("Refunded amount")
+    net_plein, retours_pleins = lire_sql(mb, f"SELECT SUM(revenue_ht - refund_value_ht), SUM(refund_value_ttc) FROM {SALES} WHERE date BETWEEN '2026-09-01' AND '2026-09-30'")[0]
+    ok = net >= float(net_plein) and retours <= float(retours_pleins) and retours > 0
+    print(f"  comparaison à âge égal : CA net {net:.0f} pour {float(net_plein):.0f} complet, retours {retours:.0f} pour {float(retours_pleins):.0f} complets {'OK' if ok else 'KO'}")
+    return 0 if ok else 1
+
+
+# Dans un tableau ventes, ces colonnes n'ont aucun jour à montrer quand la période entière suit le dernier chargement Splio.
+SANS_SPLIO = ("NEW_CUSTOMERS", "DELTA_NEW_CUSTOMERS", "BLENDED_NCAC", "DELTA_BLENDED_NCAC")
 
 
 def controler(mb, did):
     d = dashboards.get_dashboard(mb, did)
     long_terme = parametres("2026-01-01~2026-09-30", "month")
     defaut = parametres("past30days", "week")
+    avec_comparaison = parametres("past30days", "week", "2026-09-01~2026-09-30")
+    apres_chargement = parametres("past7days", "day")
     return (controler_tuiles(mb, did, d, long_terme, "janvier à septembre") + controler_tuiles(mb, did, d, defaut, "30 derniers jours")
-            + controler_coherence(mb, did, d, long_terme) + controler_arret(mb, did, d))
+            + controler_tuiles(mb, did, d, avec_comparaison, "30 jours contre septembre") + controler_tuiles(mb, did, d, apres_chargement, "7 jours après le chargement", SANS_SPLIO)
+            + controler_coherence(mb, did, d, long_terme) + controler_arret(mb, did, d) + controler_age(mb, did, d))
 
 
 def principal():
