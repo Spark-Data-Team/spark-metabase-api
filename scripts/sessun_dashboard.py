@@ -17,6 +17,8 @@ Les dépenses se croisent aux ventes par pays de livraison : le pays de la campa
 Filtres Platform et Media account sur l'onglet Media & Traffic seulement : ailleurs, un ROAS global diviserait toutes les ventes
 par une partie des dépenses. La table média est partagée entre clients : ces filtres sont liés au filtre Client, comme sur Polène,
 que Nanga verrouille à l'embed sur le nom de l'entreprise. Les cartes gardent en plus leur client_id écrit en dur.
+Le champ partagé ACCOUNT_NAME (426463) est passé de « search » à « list » le 07/11/2026, à la demande de Louis, pour avoir une vraie
+liste déroulante. Audit fait avant : sur 767 dashboards embarqués, aucun filtre ouvert sur ce champ sans être lié.
 Retours rattachés à la date de commande (spark-pipelines #1507) : ils mettent environ 35 jours à arriver. Pour que les évolutions
 restent justes sur une période récente, la période de comparaison ne compte que les retours déjà arrivés au même âge (#1509).
 """
@@ -1008,8 +1010,11 @@ def ecrire_cartes(mb):
 
 
 def ecrire_dashboard(mb, ids):
+    # Client d'abord, puis les deux dates côte à côte.
     params = [
+        {"id": PARAM["client"], "name": "Client", "slug": "client", "type": "string/=", "sectionId": "string", "default": [CLIENT_NOM]},
         {"id": PARAM["date"], "name": "Date", "slug": "date", "type": "date/all-options", "sectionId": "date", "default": "past30days"},
+        {"id": PARAM["comparison_date"], "name": "Comparison date", "slug": "comparison_date", "type": "date/all-options", "sectionId": "date", "required": False},
         {"id": PARAM["time_period"], "name": "Time period", "slug": "time_period", "type": "temporal-unit", "sectionId": "temporal-unit",
          "temporal_units": ["day", "week", "month", "quarter", "year"], "default": "week"},
         {"id": PARAM["market"], "name": "Market", "slug": "market", "type": "string/=", "sectionId": "string",
@@ -1017,10 +1022,8 @@ def ecrire_dashboard(mb, ids):
         {"id": PARAM["product_type"], "name": "Product type", "slug": "product_type", "type": "string/=", "sectionId": "string"},
         {"id": PARAM["product_name"], "name": "Product", "slug": "product_name", "type": "string/=", "sectionId": "string"},
         {"id": PARAM["store_id"], "name": "Store", "slug": "store_id", "type": "string/=", "sectionId": "string"},
-        {"id": PARAM["client"], "name": "Client", "slug": "client", "type": "string/=", "sectionId": "string", "default": [CLIENT_NOM]},
         {"id": PARAM["campaign_channel"], "name": "Platform", "slug": "platform", "type": "string/=", "sectionId": "string", "values_query_type": "list", "filteringParameters": [PARAM["client"]]},
         {"id": PARAM["account_name"], "name": "Media account", "slug": "account", "type": "string/=", "sectionId": "string", "values_query_type": "list", "filteringParameters": [PARAM["client"], PARAM["campaign_channel"]]},
-        {"id": PARAM["comparison_date"], "name": "Comparison date", "slug": "comparison_date", "type": "date/all-options", "sectionId": "date", "required": False},
     ]
     par_cle = {c["cle"]: c for c in CARTES}
     did = DASHBOARD
