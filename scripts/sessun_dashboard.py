@@ -26,12 +26,13 @@ import json
 import re
 import sys
 import textwrap
+import threading
 import uuid
 
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote
 
-from spark_metabase_api import cards, connect, dashboards, http
+from spark_metabase_api import cards, connect, dashboards, guard, http
 
 DB = 144
 COLLECTION = 15237
@@ -373,7 +374,7 @@ PLATEFORME = "CASE WHEN LOWER(campaign_channel) = 'tiktok' THEN 'TikTok' ELSE IN
 # Pays visé par une campagne : le découpage Nanga, sinon le nom (Daily_FR_..., GS - BE/FR - ...). Le reste tombe dans Other.
 PAYS_MEDIA = """CASE COALESCE(
             NULLIF(UPPER(campaign_location), 'OTHER'),
-            UPPER(REGEXP_SUBSTR(campaign_name, '(^|[_ |/-])(FR|DE|UK|GB|ES|BE|NL|IT|CH|US)([_ |/-]|$)', 1, 1, 'ie', 2))
+            UPPER(REGEXP_SUBSTR(campaign_name, '(^|[_ |/-])(FR|DE|UK|GB|ES|BE|NL|IT|CH|US)([_ |/-]|$)', 1, 1, 'e', 2))
         )
         WHEN 'UK' THEN 'GB'
         WHEN 'GB' THEN 'GB'
@@ -389,12 +390,13 @@ PAYS_MEDIA = """CASE COALESCE(
     END"""
 PAYS_VENTES = "IFF(country IN ('FR', 'BE', 'DE', 'ES', 'GB', 'NL', 'IT', 'CH', 'US'), country, 'Other')"
 TYPE_CAMPAGNE = f"{PLATEFORME} || ' / ' || INITCAP(REPLACE(campaign_category, '_', ' '))"
-TYPE_PRODUIT = "COALESCE(product_type, 'Not specified')"
+# stg_sessun__sales_items pose 'unknown' quand l'article n'a pas de type : un NULL n'arrive jamais ici.
+TYPE_PRODUIT = "COALESCE(NULLIF(product_type, 'unknown'), 'Not specified')"
 CATEGORIE = "INITCAP(REPLACE(REGEXP_REPLACE(product_category, '[0-9]+$', ''), '-', ' '))"
 FILTRES_PRODUIT = ("market", "product_type", "product_name")
 FILTRES_MEDIA = ("client", "campaign_channel", "account_name")
 S_PRODUITS_NOMMES = source(PRODUCTS, f"{PRODUCTS}.product_name <> 'unknown'", retours=True)
-S_MODELES = source(PRODUCTS, f"{PRODUCTS}.product_family IS NOT NULL", retours=True)
+S_MODELES = source(PRODUCTS, f"{PRODUCTS}.product_family <> 'unknown'", retours=True)
 
 D_NOUVEAUX = "First order across all channels, from Splio: a customer who already bought in store does not count. Stops at the last Splio load: a period after it falls back on the same number of days up to that load, and the comparison covers the same number of days."
 D_PREMIERES = "First order seen on the website, updated daily. Also counts customers who already bought in store, so it runs higher than Splio new customers."
@@ -576,9 +578,9 @@ CARTES = [
                           "new_customers": f"SUM(IFF({SALES}.date <= (SELECT last_date FROM last_load), new_customers_splio, NULL))",
                           "first_orders": "SUM(first_orders_web)", "refund_value_ttc": "SUM(refund_value_ttc)"},
             description="Website sales by site version (EN covers countries served in English). Spend is by country, in the table above. New customers stop at the last Splio load." + D_RECENT),
-    donut("d_orders_market", "Orders breakdown by market", S_SALES, "market", "market", "SUM(orders)", "total_orders", ENT, couleurs=MARCHES_C),
+    donut("d_orders_market", "Orders breakdown by market", S_SALES, "market", "market", "SUM(orders)", "total_orders", ENT, ("market",), couleurs=MARCHES_C),
     empile("e_orders_market", "Orders by period and market", S_SALES, "market", "market", "SUM(orders)", "total_orders", ENT, ("market",), couleurs=MARCHES_C),
-    donut("d_revenue_market", "Gross revenue breakdown by market", S_SALES, "market", "market", "SUM(revenue_ttc)", "revenue_ttc", EUR, description="Revenue incl. tax, before returns.", couleurs=MARCHES_C),
+    donut("d_revenue_market", "Gross revenue breakdown by market", S_SALES, "market", "market", "SUM(revenue_ttc)", "revenue_ttc", EUR, ("market",), description="Revenue incl. tax, before returns.", couleurs=MARCHES_C),
     empile("e_revenue_market", "Gross revenue by period and market", S_SALES, "market", "market", "SUM(revenue_ttc)", "revenue_ttc", EUR, ("market",), couleurs=MARCHES_C, description="Revenue incl. tax, before returns."),
     tableau("t_countries", "Performance by shipping country", S_SALES, "country", "country", "Country",
             {"net_revenue_ht": NET_HT, "total_orders": "SUM(orders)", "revenue_ttc": "SUM(revenue_ttc)"},
@@ -680,7 +682,7 @@ CARTES += [
     tableau("t_declining", "Declining products", S_PRODUITS_NOMMES, "product_name", "product_name", "Product", {"gross_revenue_ht": "SUM(revenue_ht)", "units_sold": "SUM(units_sold)"},
             [col("gross_revenue_ht", "COALESCE({t}.gross_revenue_ht, 0)", "Gross revenue excl. tax", EUR, delta=False), col("revenue_gap", "COALESCE(c.gross_revenue_ht, 0) - p.gross_revenue_ht", "Revenue change", EUR, delta=False),
              col("units_sold", "COALESCE({t}.units_sold, 0)", "Units sold", ENT, delta=False)],
-            "revenue_gap", filtres=FILTRES_PRODUIT, total=False, limite=10, ou=["p.gross_revenue_ht > 0"], ordre="revenue_gap ASC", plein=True, description="Top 10 revenue drops against the comparison period, before returns, including products with no sale on the period."),
+            "revenue_gap", filtres=FILTRES_PRODUIT, total=False, limite=10, ou=["p.gross_revenue_ht > 0", "COALESCE(c.gross_revenue_ht, 0) < p.gross_revenue_ht"], ordre="revenue_gap ASC", plein=True, description="Top 10 revenue drops against the comparison period, before returns, including products with no sale on the period."),
     tableau("t_returned", "Most returned products", S_PRODUITS_NOMMES, "product_name", "product_name", "Product", PRODUIT_MESURES,
             [col("units_returned", "{t}.units_returned", "Units returned", ENT, delta=False), col("units_sold", "{t}.units_sold", "Units sold", ENT, delta=False),
              col("return_rate", "{t}.units_returned / NULLIF({t}.units_sold, 0)", "Unit return rate", PCT, delta=False)],
@@ -726,7 +728,7 @@ CARTES += [
     tableau("t_reasons", "Return reasons", S_REASONS, "reason", "reason", "Reason", {"units_returned": "SUM(units_returned)", "refund_value_ttc": "SUM(refund_value_ttc)"},
             [col("units_returned", "{t}.units_returned", "Units returned", ENT), part("units_share", "units_returned", "Share of units"),
              col("refund_value_ttc", "{t}.refund_value_ttc", "Refunded amount", EUR, delta=False), col("reason_family", "{t}.reason_family", "Family", {}, delta=False)], "units_returned", filtres=("market",), textes={"reason_family": "MAX(reason_family)"}, description=D_MOTIFS),
-    tableau("t_reason_types", "Return reasons by product type", S_REASONS, "COALESCE(product_type, 'Not specified')", "product_type", "Product type",
+    tableau("t_reason_types", "Return reasons by product type", S_REASONS, TYPE_PRODUIT, "product_type", "Product type",
             {"units_returned": "SUM(units_returned)", "cut": "SUM(IFF(reason = 'The cut doesn''t suit me', units_returned, 0))", "too_large": "SUM(IFF(reason = 'The product is too large', units_returned, 0))",
              "too_small": "SUM(IFF(reason = 'The product is too small', units_returned, 0))", "taste": "SUM(IFF(reason_family = 'Taste', units_returned, 0))", "quality": "SUM(IFF(reason_family = 'Quality', units_returned, 0))"},
             [col("units_returned", "{t}.units_returned", "Units returned", ENT, delta=False),
@@ -997,6 +999,7 @@ def ecrire_cartes(mb):
     if doublons:
         raise ValueError(f"titres de cartes en double : {doublons}")
     ch, deja, ids = champs(mb), existants(mb), {}
+    guard.snapshot(mb, "card", [i for (modele, _), i in deja.items() if modele == "card"])
     for c in CARTES:
         nom = f"{c['titre']} | Sessùn"
         payload = {"name": nom, "display": c["display"], "visualization_settings": c["viz"], "collection_id": COLLECTION, "description": c["description"],
@@ -1013,7 +1016,7 @@ def ecrire_dashboard(mb, ids):
     # Client d'abord, puis les deux dates côte à côte.
     params = [
         {"id": PARAM["client"], "name": "Client", "slug": "client", "type": "string/=", "sectionId": "string", "default": [CLIENT_NOM]},
-        {"id": PARAM["date"], "name": "Date", "slug": "date", "type": "date/all-options", "sectionId": "date", "default": "past30days"},
+        {"id": PARAM["date"], "name": "Date", "slug": "date", "type": "date/all-options", "sectionId": "date", "default": "past30days", "required": True},
         {"id": PARAM["comparison_date"], "name": "Comparison date", "slug": "comparison_date", "type": "date/all-options", "sectionId": "date", "required": False},
         {"id": PARAM["time_period"], "name": "Time period", "slug": "time_period", "type": "temporal-unit", "sectionId": "temporal-unit",
          "temporal_units": ["day", "week", "month", "quarter", "year"], "default": "week"},
@@ -1048,11 +1051,8 @@ def ecrire_dashboard(mb, ids):
                                "visualization_settings": {"virtual_card": {"name": None, "display": "text", "visualization_settings": {}, "dataset_query": {}, "archived": False}, "text": quoi, **TITRE_TEXTE}})
             dc -= 1
     description = "Sessùn media, web sales, retail and CRM. Sources: Nanga for media, Sessùn BigQuery for sales and Splio."
-    # Le dashboard est réécrit en entier : la vérification « rien de perdu » de put_dashboard n'a de sens que pour une retouche.
-    http.put(mb, f"/api/dashboard/{did}", json={"name": NOM, "description": description, "parameters": params, "tabs": tabs, "dashcards": tuiles, "width": "full"})
-    relu = dashboards.get_dashboard(mb, did)
-    if len(relu["dashcards"]) != len(tuiles) or len(relu["tabs"]) != len(tabs):
-        raise ValueError(f"dashboard {did} : {len(relu['dashcards'])} tuiles relues sur {len(tuiles)}, {len(relu['tabs'])} onglets sur {len(tabs)}")
+    guard.snapshot(mb, "dashboard", [did])
+    dashboards.put_dashboard(mb, did, {"name": NOM, "description": description, "parameters": params, "tabs": tabs, "dashcards": tuiles, "width": "full"})
     return did
 
 
@@ -1063,6 +1063,17 @@ def parametres(periode, unite, comparaison=None, **filtres):
     if comparaison:
         params.append({"id": PARAM["comparison_date"], "type": "date/all-options", "value": comparaison, "target": ["dimension", ["template-tag", "comparison_date"], {"stage-number": 0}]})
     return params
+
+
+# Metabase_API n'est pas thread-safe : un client par fil, réutilisé d'une passe à l'autre.
+POOL = ThreadPoolExecutor(8)
+FILS = threading.local()
+
+
+def client_du_fil():
+    if not hasattr(FILS, "mb"):
+        FILS.mb = connect()
+    return FILS.mb
 
 
 def jouer(mb, did, dc, params):
@@ -1089,8 +1100,7 @@ def controler_tuiles(mb, did, d, params, libelle, tolerees=()):
     """
     onglets = {t["id"]: t["name"] for t in d["tabs"]}
     tuiles = [x for x in d["dashcards"] if x.get("card_id")]
-    with ThreadPoolExecutor(8) as ex:
-        resultats = list(ex.map(lambda dc: jouer(mb, did, dc, params), tuiles))
+    resultats = list(POOL.map(lambda dc: jouer(client_du_fil(), did, dc, params), tuiles))
     echecs = 0
     for dc, (data, err) in zip(tuiles, resultats):
         titre = dc["visualization_settings"].get("card.title") or ""
@@ -1164,6 +1174,10 @@ SELECT
     (SELECT SUM(new_customers_splio) FROM {SALES}, b WHERE date BETWEEN DATEADD(day, -(DATEDIFF(day, debut, fin) + 1), debut) AND DATEADD(day, -1, debut)),
     (SELECT SUM(new_customers_splio) FROM {SALES}, b WHERE date BETWEEN debut AND fin)
 FROM b""")[0]
+    if attendu[0] is None or attendu[1] is None:
+        # Dernier chargement avant le début de la période : la carte se replie sur periodes(), ce calcul ne s'applique plus.
+        print(f"  arrêt Splio : période entièrement après le dernier chargement, contrôle sans objet, carte {avant[0][:10]} {avant[1]} puis {apres[0][:10]} {apres[1]}")
+        return 0
     ok = float(avant[1]) == float(attendu[0]) and float(apres[1]) == float(attendu[1])
     print(f"  arrêt Splio : {avant[0][:10]} {avant[1]} puis {apres[0][:10]} {apres[1]}, attendu {attendu[0]} puis {attendu[1]} {'OK' if ok else 'KO'}")
     return 0 if ok else 1
