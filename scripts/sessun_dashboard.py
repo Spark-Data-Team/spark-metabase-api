@@ -14,6 +14,9 @@ CLIENT_DATA.SESSUN__* pour le reste. Les tables restent sans alias : Metabase é
 Décisions de Louis du 06/11/2026 : nouveaux clients Splio arrêtés au dernier chargement, sur deux périodes de même durée ;
 ROAS sur le CA HT net de retours ; filtre Marché hors de la Vue d'ensemble.
 Les dépenses se croisent aux ventes par pays de livraison : le pays de la campagne vient de campaign_location ou de son nom.
+Filtres Platform et Media account sur l'onglet Media & Traffic seulement : ailleurs, un ROAS global diviserait toutes les ventes
+par une partie des dépenses. La table média est partagée entre clients : ces filtres sont liés au filtre Client, comme sur Polène,
+que Nanga verrouille à l'embed sur le nom de l'entreprise. Les cartes gardent en plus leur client_id écrit en dur.
 Retours rattachés à la date de commande (spark-pipelines #1507) : ils mettent environ 35 jours à arriver. Pour que les évolutions
 restent justes sur une période récente, la période de comparaison ne compte que les retours déjà arrivés au même âge (#1509).
 """
@@ -24,6 +27,7 @@ import textwrap
 import uuid
 
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import quote
 
 from spark_metabase_api import cards, connect, dashboards, http
 
@@ -32,6 +36,7 @@ COLLECTION = 15237
 DASHBOARD = 30879
 NOM = "Media & Sales | Sessùn"
 CLIENT = "rec7aHUXyxAvMBEiw"
+CLIENT_NOM = "Sessùn"  # public.companies.name : la valeur que Nanga signe dans l'embed, identique à client_name.
 MARCHES = ["FR", "DE", "EN", "ES", "GB", "NL", "IT", "US", "CH"]
 CALENDRIER = 419201
 
@@ -385,6 +390,7 @@ TYPE_CAMPAGNE = f"{PLATEFORME} || ' / ' || INITCAP(REPLACE(campaign_category, '_
 TYPE_PRODUIT = "COALESCE(product_type, 'Not specified')"
 CATEGORIE = "INITCAP(REPLACE(REGEXP_REPLACE(product_category, '[0-9]+$', ''), '-', ' '))"
 FILTRES_PRODUIT = ("market", "product_type", "product_name")
+FILTRES_MEDIA = ("client", "campaign_channel", "account_name")
 S_PRODUITS_NOMMES = source(PRODUCTS, f"{PRODUCTS}.product_name <> 'unknown'", retours=True)
 S_MODELES = source(PRODUCTS, f"{PRODUCTS}.product_family IS NOT NULL", retours=True)
 
@@ -603,36 +609,36 @@ CARTES = [
            "series_settings": {"NET_REVENUE_HT": {"title": "Net revenue", "color": COULEURS["net"][0]}, "COST": {"title": "Spend", "color": COULEURS["spend"][0]}},
            **formats({"cost": sur_graphique(EUR), "net_revenue_ht": sur_graphique(EUR)})}, D_PAYS),
     # ---- Média et trafic -----------------------------------------------------------------------------------------------
-    donut("d_cost_platform", "Spend breakdown by platform", S_MEDIA, PLATEFORME, "platform", "SUM(cost)", "cost", EUR, couleurs=PLATEFORMES),
-    empile("e_cost_platform", "Spend by period and platform", S_MEDIA, PLATEFORME, "platform", "SUM(cost)", "cost", EUR, couleurs=PLATEFORMES),
+    donut("d_cost_platform", "Spend breakdown by platform", S_MEDIA, PLATEFORME, "platform", "SUM(cost)", "cost", EUR, FILTRES_MEDIA, couleurs=PLATEFORMES),
+    empile("e_cost_platform", "Spend by period and platform", S_MEDIA, PLATEFORME, "platform", "SUM(cost)", "cost", EUR, FILTRES_MEDIA, couleurs=PLATEFORMES),
     tableau("t_platforms", "Performance by platform", S_MEDIA, PLATEFORME, "platform", "Platform",
             {"cost": "SUM(cost)", "purchases": "SUM(purchases)", "purchases_value": "SUM(purchases_value)"},
             [col("cost", "{t}.cost", "Spend", EUR), part("cost_share", "cost", "Share of spend"), col("purchases", "{t}.purchases", "Reported purchases", ENT, delta=False),
              col("purchases_value", "{t}.purchases_value", "Reported revenue", EUR), col("declared_roas", "{t}.purchases_value / NULLIF({t}.cost, 0)", "Reported ROAS", DEC),
              col("declared_cpa", "{t}.cost / NULLIF({t}.purchases, 0)", "Reported CPA", EUR, delta=False)],
-            "cost", description=D_DECLARE + " Blended ROAS on the Overview tab uses website sales."),
+            "cost", filtres=FILTRES_MEDIA, description=D_DECLARE + " Blended ROAS on the Overview tab uses website sales."),
     tableau("t_delivery", "Delivery by platform", S_MEDIA, PLATEFORME, "platform", "Platform", MESURES_DIFFUSION,
             [col("impressions", "{t}.impressions", "Impressions", ENT), col("clicks", "{t}.clicks", "Clicks", ENT),
              col("ctr", "{t}.clicks / NULLIF({t}.impressions, 0)", "CTR", PCT2), col("cpc", "{t}.cost / NULLIF({t}.clicks, 0)", "CPC", DEC_EUR), col("cpm", "1000 * {t}.cost / NULLIF({t}.impressions, 0)", "CPM", DEC_EUR)],
-            "impressions", description="As reported by each platform."),
+            "impressions", filtres=FILTRES_MEDIA, description="As reported by each platform."),
     tableau("t_campaign_types", "Spend by campaign type", S_MEDIA, TYPE_CAMPAGNE, "campaign_type", "Platform / type",
             {**MESURES_DIFFUSION, "purchases_value": "SUM(purchases_value)"},
             [col("cost", "{t}.cost", "Spend", EUR), part("cost_share", "cost", "Share of spend"), col("clicks", "{t}.clicks", "Clicks", ENT, delta=False),
              col("cpc", "{t}.cost / NULLIF({t}.clicks, 0)", "CPC", DEC_EUR, delta=False), col("declared_roas", "{t}.purchases_value / NULLIF({t}.cost, 0)", "Reported ROAS", DEC)],
-            "cost", description="Campaign type as set in the Nanga naming rules. " + D_DECLARE),
+            "cost", filtres=FILTRES_MEDIA, description="Campaign type as set in the Nanga naming rules. " + D_DECLARE),
     tableau("t_campaigns", "Top 20 campaigns", S_MEDIA, "campaign_name", "campaign_name", "Campaign",
             {**MESURES_DIFFUSION, "purchases": "SUM(purchases)", "purchases_value": "SUM(purchases_value)"},
             [col("platform", "{t}.platform", "Platform", {}, delta=False), col("cost", "{t}.cost", "Spend", EUR), col("impressions", "{t}.impressions", "Impressions", ENT, delta=False),
              col("ctr", "{t}.clicks / NULLIF({t}.impressions, 0)", "CTR", PCT2, delta=False), col("cpc", "{t}.cost / NULLIF({t}.clicks, 0)", "CPC", DEC_EUR, delta=False),
              col("purchases", "{t}.purchases", "Reported purchases", ENT, delta=False), col("declared_roas", "{t}.purchases_value / NULLIF({t}.cost, 0)", "Reported ROAS", DEC, delta=False)],
-            "cost", limite=20, textes={"platform": f"MAX({PLATEFORME})"}, description="Ranked by spend. " + D_DECLARE),
+            "cost", filtres=FILTRES_MEDIA, limite=20, textes={"platform": f"MAX({PLATEFORME})"}, description="Ranked by spend. " + D_DECLARE),
     donut("d_sessions_channel", "Sessions breakdown by channel", S_TRAFFIC, CANAL, "channel", "SUM(sessions)", "total_sessions", ENT, couleurs=CANAUX_C),
     empile("e_sessions_channel", "Sessions by period and channel", S_TRAFFIC, CANAL, "channel", "SUM(sessions)", "total_sessions", ENT, couleurs=CANAUX_C),
     tableau("t_channels", "Traffic by channel", S_TRAFFIC, CANAL, "channel", "Channel",
             {"total_sessions": "SUM(sessions)", "new_users": "SUM(new_users)", "engaged_sessions": "SUM(engaged_sessions)"},
             [col("total_sessions", "{t}.total_sessions", "Sessions", ENT), part("sessions_share", "total_sessions", "Share of sessions"), col("new_users", "{t}.new_users", "New users", ENT),
              col("engagement_rate", "{t}.engaged_sessions / NULLIF({t}.total_sessions, 0)", "Engagement rate", PCT)],
-            "total_sessions", arret="trafic", description="Source: GA4 global property, to the last complete day. Other: sessions GA4 reports without a known medium. GA4 conversions are not configured for Sessùn in Nanga, so there is no conversion rate by channel yet."),
+            "total_sessions", arret="trafic", description="Source: GA4 global property, to the last complete day. Other: sessions GA4 reports without a known medium. GA4 conversions are not configured for Sessùn in Nanga, so there is no conversion rate by channel yet. Not affected by the Platform and Media account filters."),
     # ---- Produits -----------------------------------------------------------------------------------------------------
 ]
 
@@ -875,7 +881,7 @@ ONGLETS = [
         ("c_new_cost", 40, 0, 24, 5),
         ("t_media_countries", 45, 0, 24, 9),
     ]),
-    ("Media & Traffic", BASE, [
+    ("Media & Traffic", BASE + FILTRES_MEDIA, [
         ("# Media", 0, 0, 24, 2),
         ("d_cost_platform", 2, 0, 8, 6), ("e_cost_platform", 2, 8, 16, 6),
         ("t_platforms", 8, 0, 24, 5),
@@ -941,17 +947,18 @@ ONGLETS = [
 ]
 
 PARAM = {"date": "sessun_date", "time_period": "sessun_time_period", "comparison_date": "sessun_comparison", "market": "sessun_market",
-         "product_type": "sessun_product_type", "product_name": "sessun_product_name", "store_id": "sessun_store"}
+         "product_type": "sessun_product_type", "product_name": "sessun_product_name", "store_id": "sessun_store",
+         "client": "sessun_client", "campaign_channel": "sessun_platform", "account_name": "sessun_account"}
 TITRE_TEXTE = {"text.align_horizontal": "center", "text.align_vertical": "middle", "dashcard.background": False}
 
 
 # ---- Écriture -------------------------------------------------------------------------------------------------------
 def champs(mb):
     """Identifiants des champs : les filtres s'y rattachent. Ils n'existent qu'après la synchro Metabase."""
-    def lire(table):
-        t = next(x for x in http.get(mb, "/api/database/" + str(DB) + "/schema/CLIENT_DATA") if x["name"].upper() == table)
+    def lire(table, schema="CLIENT_DATA"):
+        t = next(x for x in http.get(mb, f"/api/database/{DB}/schema/{schema}") if x["name"].upper() == table)
         return {f["name"].upper(): f["id"] for f in http.get(mb, f"/api/table/{t['id']}/query_metadata")["fields"]}
-    return {"ventes": lire("SESSUN__SALES_DAILY_METRICS"), "produits": lire("SESSUN__PRODUCT_DAILY_METRICS"), "boutique": lire("SESSUN__RETAIL_DAILY_METRICS"), "motifs": lire("SESSUN__RETURN_REASON_DAILY_METRICS")}
+    return {"ventes": lire("SESSUN__SALES_DAILY_METRICS"), "produits": lire("SESSUN__PRODUCT_DAILY_METRICS"), "boutique": lire("SESSUN__RETAIL_DAILY_METRICS"), "motifs": lire("SESSUN__RETURN_REASON_DAILY_METRICS"), "media": lire("CAMPAIGN_DAILY_METRICS", "GLOBAL")}
 
 
 def tags_de(sql, ch):
@@ -967,6 +974,10 @@ def tags_de(sql, ch):
                 champ = ch["produits" if PRODUCTS in sql else "motifs" if REASONS in sql else "ventes"]["MARKET"]
             elif nom == "store_id":
                 champ = ch["boutique"]["STORE_ID"]
+            elif nom == "client":
+                champ = ch["media"]["CLIENT_NAME"]
+            elif nom in FILTRES_MEDIA:
+                champ = ch["media"][nom.upper()]
             else:
                 champ = ch["produits"][nom.upper()]
             tags[nom] = {**base, "type": "dimension", "dimension": ["field", champ, None], "widget-type": "string/="}
@@ -1006,6 +1017,9 @@ def ecrire_dashboard(mb, ids):
         {"id": PARAM["product_type"], "name": "Product type", "slug": "product_type", "type": "string/=", "sectionId": "string"},
         {"id": PARAM["product_name"], "name": "Product", "slug": "product_name", "type": "string/=", "sectionId": "string"},
         {"id": PARAM["store_id"], "name": "Store", "slug": "store_id", "type": "string/=", "sectionId": "string"},
+        {"id": PARAM["client"], "name": "Client", "slug": "client", "type": "string/=", "sectionId": "string", "default": [CLIENT_NOM]},
+        {"id": PARAM["campaign_channel"], "name": "Platform", "slug": "platform", "type": "string/=", "sectionId": "string", "values_query_type": "list", "filteringParameters": [PARAM["client"]]},
+        {"id": PARAM["account_name"], "name": "Media account", "slug": "account", "type": "string/=", "sectionId": "string", "values_query_type": "list", "filteringParameters": [PARAM["client"], PARAM["campaign_channel"]]},
         {"id": PARAM["comparison_date"], "name": "Comparison date", "slug": "comparison_date", "type": "date/all-options", "sectionId": "date", "required": False},
     ]
     par_cle = {c["cle"]: c for c in CARTES}
@@ -1040,8 +1054,8 @@ def ecrire_dashboard(mb, ids):
 
 
 # ---- Contrôle -------------------------------------------------------------------------------------------------------
-def parametres(periode, unite, comparaison=None):
-    params = [{"id": PARAM["date"], "type": "date/all-options", "value": periode, "target": ["dimension", ["template-tag", "date"], {"stage-number": 0}]},
+def parametres(periode, unite, comparaison=None, **filtres):
+    params = [{"id": PARAM[f], "type": "string/=", "value": [v], "target": ["dimension", ["template-tag", f], {"stage-number": 0}]} for f, v in filtres.items()] + [{"id": PARAM["date"], "type": "date/all-options", "value": periode, "target": ["dimension", ["template-tag", "date"], {"stage-number": 0}]},
               {"id": PARAM["time_period"], "type": "temporal-unit", "value": unite, "target": ["dimension", ["template-tag", "time_period"], {"stage-number": 0}]}]
     if comparaison:
         params.append({"id": PARAM["comparison_date"], "type": "date/all-options", "value": comparaison, "target": ["dimension", ["template-tag", "comparison_date"], {"stage-number": 0}]})
@@ -1150,6 +1164,47 @@ FROM b""")[0]
     return 0 if ok else 1
 
 
+def controler_filtres_media(mb, did, d):
+    """Plateforme et compte doivent filtrer tous les tableaux média, sans montrer un autre client."""
+    ecarts = 0
+    for nom, filtre, condition in (("plateforme Google", {"campaign_channel": "google"}, "campaign_channel = 'google'"),
+                                   ("compte Meta Global", {"account_name": "Sessùn Meta Global"}, "account_name = 'Sessùn Meta Global'")):
+        cout, impressions = lire_sql(mb, f"SELECT SUM(cost), SUM(impressions) FROM {MEDIA} WHERE client_id = '{CLIENT}' AND {condition} AND date BETWEEN '2026-01-01' AND '2026-09-30'")[0]
+        params = parametres("2026-01-01~2026-09-30", "month", **filtre)
+        for titre, colonne, attendu in (("Performance by platform", "COST", cout), ("Delivery by platform", "IMPRESSIONS", impressions), ("Spend by campaign type", "COST", cout), ("Top 20 campaigns", "COST", cout)):
+            attendu = float(attendu)
+            dc = next(x for x in d["dashcards"] if x.get("card_id") and x["visualization_settings"].get("card.title") == titre)
+            data, err = jouer(mb, did, dc, params)
+            if err:
+                print(f"  filtre {nom} {titre} : ERREUR {err}")
+                ecarts += 1
+                continue
+            noms = [c["name"] for c in data["cols"]]
+            lu = float(next(l for l in data["rows"] if "Total" in l)[noms.index(colonne)])
+            ok = abs(lu - attendu) <= 0.001 * attendu
+            ecarts += 0 if ok else 1
+            print(f"  filtre {nom}, {titre} : {lu:.2f} pour {attendu:.2f} attendu {'OK' if ok else 'KO'}")
+    return ecarts
+
+
+def controler_filtres_lies(mb, did):
+    """Les listes déroulantes ne montrent que Sessùn, et le compte suit la plateforme. La table média porte tous les clients."""
+    def valeurs(param, **lies):
+        requete = "&".join(f"{PARAM[k]}={quote(v)}" for k, v in lies.items())
+        return sorted(v[0] for v in http.get(mb, f"/api/dashboard/{did}/params/{PARAM[param]}/values?{requete}")["values"])
+    def attendu(colonne, condition="TRUE"):
+        return sorted(l[0] for l in lire_sql(mb, f"SELECT DISTINCT {colonne} FROM {MEDIA} WHERE client_id = '{CLIENT}' AND {condition}"))
+    cas = [("plateformes de Sessùn", valeurs("campaign_channel", client=CLIENT_NOM), attendu("campaign_channel")),
+           ("comptes de Sessùn", valeurs("account_name", client=CLIENT_NOM), attendu("account_name")),
+           ("comptes Meta de Sessùn", valeurs("account_name", client=CLIENT_NOM, campaign_channel="meta"), attendu("account_name", "campaign_channel = 'meta'"))]
+    ecarts = 0
+    for nom, lu, voulu in cas:
+        ok = lu == voulu
+        ecarts += 0 if ok else 1
+        print(f"  filtre lié, {nom} : {len(lu)} valeurs pour {len(voulu)} attendues {'OK' if ok else 'KO ' + str(sorted(set(lu) ^ set(voulu))[:5])}")
+    return ecarts
+
+
 def controler_age(mb, did, d):
     """À âge égal, la comparaison retire des retours pas encore arrivés : son CA net est au moins le CA net complet, et son taux de retour au plus."""
     params = parametres("past30days", "week", "2026-09-01~2026-09-30")
@@ -1178,7 +1233,7 @@ def controler(mb, did):
     apres_chargement = parametres("past7days", "day")
     return (controler_tuiles(mb, did, d, long_terme, "janvier à septembre") + controler_tuiles(mb, did, d, defaut, "30 derniers jours")
             + controler_tuiles(mb, did, d, avec_comparaison, "30 jours contre septembre") + controler_tuiles(mb, did, d, apres_chargement, "7 jours après le chargement", SANS_SPLIO)
-            + controler_coherence(mb, did, d, long_terme) + controler_arret(mb, did, d) + controler_age(mb, did, d))
+            + controler_coherence(mb, did, d, long_terme) + controler_arret(mb, did, d) + controler_age(mb, did, d) + controler_filtres_media(mb, did, d) + controler_filtres_lies(mb, did))
 
 
 def principal():
