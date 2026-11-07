@@ -637,10 +637,11 @@ CARTES = [
     donut("d_sessions_channel", "Sessions breakdown by channel", S_TRAFFIC, CANAL, "channel", "SUM(sessions)", "total_sessions", ENT, couleurs=CANAUX_C),
     empile("e_sessions_channel", "Sessions by period and channel", S_TRAFFIC, CANAL, "channel", "SUM(sessions)", "total_sessions", ENT, couleurs=CANAUX_C),
     tableau("t_channels", "Traffic by channel", S_TRAFFIC, CANAL, "channel", "Channel",
-            {"total_sessions": "SUM(sessions)", "new_users": "SUM(new_users)", "engaged_sessions": "SUM(engaged_sessions)"},
+            {"total_sessions": "SUM(sessions)", "new_users": "SUM(new_users)", "engaged_sessions": "SUM(engaged_sessions)", "ga4_purchases": "SUM(conversions)"},
             [col("total_sessions", "{t}.total_sessions", "Sessions", ENT), part("sessions_share", "total_sessions", "Share of sessions"), col("new_users", "{t}.new_users", "New users", ENT),
-             col("engagement_rate", "{t}.engaged_sessions / NULLIF({t}.total_sessions, 0)", "Engagement rate", PCT)],
-            "total_sessions", arret="trafic", description="Source: GA4 global property, to the last complete day. Other: sessions GA4 reports without a known medium. GA4 conversions are not configured for Sessùn in Nanga, so there is no conversion rate by channel yet. Not affected by the Platform and Media account filters."),
+             col("engagement_rate", "{t}.engaged_sessions / NULLIF({t}.total_sessions, 0)", "Engagement rate", PCT),
+             col("ga4_purchases", "{t}.ga4_purchases", "GA4 purchases", ENT, delta=False), col("ga4_conversion_rate", "{t}.ga4_purchases / NULLIF({t}.total_sessions, 0)", "GA4 conversion rate", PCT, delta=False)],
+            "total_sessions", arret="trafic", description="Source: GA4 global property, to the last complete day. Other: sessions GA4 reports without a known medium, which also holds almost half of GA4 purchases. GA4 records about three quarters of web orders, so use these columns to compare channels, not to count orders. Not affected by the Platform and Media account filters."),
     # ---- Produits -----------------------------------------------------------------------------------------------------
 ]
 
@@ -1126,6 +1127,7 @@ def controler_coherence(mb, did, d, params):
     # Le mois de contrôle précède la dernière semaine de Splio : sur janvier à septembre, aucune borne n'intervient.
     precedent = lire_sql(mb, f"SELECT SUM(orders) FROM {SALES} WHERE date BETWEEN DATEADD(day, -273, '2026-01-01'::DATE) AND '2025-12-31'::DATE")[0][0]
     sessions = lire_sql(mb, f"SELECT SUM(sessions) FROM {TRAFFIC} WHERE client_id = '{CLIENT}' AND profile = '{GA4_GLOBALE}' AND date BETWEEN '2026-01-01' AND '2026-09-30'")[0][0]
+    achats_ga4 = lire_sql(mb, f"SELECT SUM(conversions) FROM {TRAFFIC} WHERE client_id = '{CLIENT}' AND profile = '{GA4_GLOBALE}' AND date BETWEEN '2026-01-01' AND '2026-09-30'")[0][0]
     attendus = [("Blended ROAS", kpi_lu("Blended ROAS"), ca / depenses), ("Blended CAC", kpi_lu("Cost per order"), depenses / commandes),
                 ("New customer CAC", kpi_lu("New customer CAC"), depenses / nouveaux),
                 ("Total marchés CA", total_lu("Performance by market", "NET_REVENUE_HT"), ca), ("Total marchés commandes", total_lu("Performance by market", "TOTAL_ORDERS"), commandes),
@@ -1136,6 +1138,7 @@ def controler_coherence(mb, did, d, params):
                 ("Total motifs de retour", total_lu("Return reasons", "REFUND_VALUE_TTC"), kpi_lu("Refunded amount")),
                 ("Nouveaux, existants et hors Splio", float(lire_sql(mb, f"""SELECT SUM(new_customer_net_revenue_ht) + SUM(net_revenue_ht_in_splio - new_customer_net_revenue_ht) + SUM(revenue_ht - refund_value_ht - net_revenue_ht_in_splio) FROM {SALES} WHERE date BETWEEN '2026-01-01' AND '2026-09-30'""")[0][0]), ca),
                 ("Sessions, propriété globale seule", total_lu("Traffic by channel", "TOTAL_SESSIONS"), float(sessions)),
+                ("Achats GA4, propriété globale seule", total_lu("Traffic by channel", "GA4_PURCHASES"), float(achats_ga4)),
                 ("Commandes période précédente", kpi_lu("Orders", 0), float(precedent))]
     ecarts = 0
     for nom, lu, attendu in attendus:
