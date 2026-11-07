@@ -508,10 +508,10 @@ def cohortes_mensuelles(cle, titre, origine, description, avec_depenses=False):
     sql = ctes + "SELECT\n" + ",\n".join("    " + l for l in lignes) + f"\nFROM {MONTHLY}" + (f"\n    LEFT JOIN spend ON spend.cohort_month = {MONTHLY}.cohort_month" if avec_depenses else "")
     sql += f"\nWHERE origine = '{origine}'\n    AND {MONTHLY}.cohort_month >= {DEBUT_DEPENSES}\nORDER BY {MONTHLY}.cohort_month DESC"
     reglages = {"first_purchase": {"column_title": "First purchase"}, "customers": {**ENT, "column_title": "New customers"},
-                "ltv_m3": {**EUR, "column_title": "LTV at 3 months"}, "ltv_m6": {**EUR, "column_title": "LTV at 6 months"}, "ltv_m12": {**EUR, "column_title": "LTV at 12 months"},
-                "repurchase_rate_m6": {**PCT, "column_title": "Repurchase at 6 months"}, "repurchase_rate_m12": {**PCT, "column_title": "Repurchase at 12 months"}}
+                "ltv_m3": {**EUR, "column_title": "LTV 3 mo"}, "ltv_m6": {**EUR, "column_title": "LTV 6 mo"}, "ltv_m12": {**EUR, "column_title": "LTV 12 mo"},
+                "repurchase_rate_m6": {**PCT, "column_title": "Repurchase 6 mo"}, "repurchase_rate_m12": {**PCT, "column_title": "Repurchase 12 mo"}}
     if avec_depenses:
-        reglages.update({"acquisition_cost": {**EUR, "column_title": "Acquisition cost"}, "return_m3": {**FOIS, "column_title": "Return at 3 months"}})
+        reglages.update({"acquisition_cost": {**EUR, "column_title": "Acquisition cost"}, "return_m3": {**FOIS, "column_title": "Return 3 mo"}})
     chauffe = [{"id": i, "columns": [c.upper()], "type": "range", "colors": ["#FFFFFF", "#6896E9"], "min_type": None, "max_type": None, "min_value": 0, "max_value": 100, "highlight_row": False}
                for i, c in enumerate(["ltv_m3", "ltv_m6", "ltv_m12"])]
     return carte(cle, titre, sql, "table", {"table.column_formatting": chauffe, **formats(reglages)}, description)
@@ -588,8 +588,8 @@ CARTES = [
     tableau_pays("t_media_countries", "Media and sales by country", [
         col("cost", "{t}.cost", "Spend", EUR), col("net_revenue_ht", "{t}.net_revenue_ht", "Net revenue", EUR),
         col("blended_roas", "{t}.net_revenue_ht / NULLIF({t}.cost, 0)", "Blended ROAS", DEC), col("total_orders", "{t}.total_orders", "Orders", ENT, delta=False),
-        col("avg_order_value", "{t}.revenue_ttc / NULLIF({t}.total_orders, 0)", "AOV incl. tax", EUR, delta=False), col("new_customers", "{t}.new_customers", "New customers (Splio)", ENT),
-        col("blended_ncac", "NULLIF({t}.cost_splio, 0) / NULLIF({t}.new_customers, 0)", "New customer CAC", EUR)], "cost", D_PAYS),
+        col("avg_order_value", "{t}.revenue_ttc / NULLIF({t}.total_orders, 0)", "AOV incl. tax", EUR, delta=False), col("new_customers", "{t}.new_customers", "New customers", ENT, delta=False),
+        col("blended_ncac", "NULLIF({t}.cost_splio, 0) / NULLIF({t}.new_customers, 0)", "New customer CAC", EUR, delta=False)], "cost", D_PAYS),
     tableau_pays("t_media_share", "Share of spend against share of revenue", [
         part("cost_share", "cost", "Share of spend"), part("revenue_share", "net_revenue_ht", "Share of net revenue"),
         col("share_gap", "100 * (c.cost / NULLIF(SUM(IFF(c.rank = 2, c.cost, 0)) OVER (), 0) - c.net_revenue_ht / NULLIF(SUM(IFF(c.rank = 2, c.net_revenue_ht, 0)) OVER (), 0))", "Gap", PTS, delta=False)],
@@ -866,22 +866,20 @@ KPI = 3
 ONGLETS = [
     ("Overview", BASE, [
         ("# Overview", 0, 0, 24, 2),
-        ("kpi_cost", 2, 0, 4, KPI), ("kpi_refund_value_ttc", 5, 0, 4, KPI),
-        ("kpi_total_orders", 2, 4, 4, KPI), ("kpi_blended_cac", 5, 4, 4, KPI),
-        ("kpi_new_customers", 2, 8, 4, KPI), ("kpi_blended_ncac", 5, 8, 4, KPI),
-        ("kpi_first_orders", 2, 12, 4, KPI), ("kpi_avg_order_value", 5, 12, 4, KPI),
-        ("kpi_net_revenue_ht", 2, 16, 4, KPI), ("kpi_blended_roas", 5, 16, 4, KPI),
-        ("kpi_revenue_ttc", 2, 20, 4, KPI), ("kpi_return_rate", 5, 20, 4, KPI),
-        ("c_orders_revenue", 8, 0, 24, 5),
-        ("## Paid investment and sales", 13, 0, 24, 2),
-        ("c_roas_revenue", 15, 0, 12, 5), ("c_cac_orders", 15, 12, 12, 5),
-        ("c_orders_cost", 20, 0, 12, 5), ("c_revenue_cost", 20, 12, 12, 5),
-        ("### Focus on new customers", 25, 0, 24, 1),
-        ("kpi_new_customer_revenue", 26, 0, 12, KPI), ("kpi_new_customer_share", 26, 12, 12, KPI),
-        ("e_new_existing", 29, 0, 24, 6),
-        ("c_ncac", 35, 0, 12, 5), ("c_new_vs_first", 35, 12, 12, 5),
-        ("c_new_cost", 40, 0, 24, 5),
-        ("t_media_countries", 45, 0, 24, 9),
+        # 4 tuiles par ligne : dans l'embed Nanga, plus étroit, 6 tuiles écrivaient « €1M » et coupaient les titres.
+        ("kpi_cost", 2, 0, 6, KPI), ("kpi_net_revenue_ht", 2, 6, 6, KPI), ("kpi_blended_roas", 2, 12, 6, KPI), ("kpi_total_orders", 2, 18, 6, KPI),
+        ("kpi_revenue_ttc", 5, 0, 6, KPI), ("kpi_refund_value_ttc", 5, 6, 6, KPI), ("kpi_return_rate", 5, 12, 6, KPI), ("kpi_avg_order_value", 5, 18, 6, KPI),
+        ("kpi_new_customers", 8, 0, 6, KPI), ("kpi_blended_ncac", 8, 6, 6, KPI), ("kpi_first_orders", 8, 12, 6, KPI), ("kpi_blended_cac", 8, 18, 6, KPI),
+        ("c_orders_revenue", 11, 0, 24, 5),
+        ("## Paid investment and sales", 16, 0, 24, 2),
+        ("c_roas_revenue", 18, 0, 12, 5), ("c_cac_orders", 18, 12, 12, 5),
+        ("c_orders_cost", 23, 0, 12, 5), ("c_revenue_cost", 23, 12, 12, 5),
+        ("### Focus on new customers", 28, 0, 24, 1),
+        ("kpi_new_customer_revenue", 29, 0, 12, KPI), ("kpi_new_customer_share", 29, 12, 12, KPI),
+        ("e_new_existing", 32, 0, 24, 6),
+        ("c_ncac", 38, 0, 12, 5), ("c_new_vs_first", 38, 12, 12, 5),
+        ("c_new_cost", 43, 0, 24, 5),
+        ("t_media_countries", 48, 0, 24, 10),
     ]),
     ("Media & Traffic", BASE + FILTRES_MEDIA, [
         ("# Media", 0, 0, 24, 2),
@@ -896,14 +894,14 @@ ONGLETS = [
     ]),
     ("Markets", BASE + ("market",), [
         ("# Media and sales by country", 0, 0, 24, 2),
-        ("t_media_countries", 2, 0, 24, 9),
-        ("b_media_countries", 11, 0, 12, 8), ("t_media_share", 11, 12, 12, 8),
-        ("# Performance by market", 19, 0, 24, 2),
-        ("d_orders_market", 21, 0, 8, 6), ("e_orders_market", 21, 8, 16, 6),
-        ("d_revenue_market", 27, 0, 8, 6), ("e_revenue_market", 27, 8, 16, 6),
-        ("t_markets", 33, 0, 24, 9),
-        ("# Performance by shipping country", 42, 0, 24, 2),
-        ("t_countries", 44, 0, 24, 12),
+        ("t_media_countries", 2, 0, 24, 10),
+        ("b_media_countries", 12, 0, 12, 9), ("t_media_share", 12, 12, 12, 9),
+        ("# Performance by market", 21, 0, 24, 2),
+        ("d_orders_market", 23, 0, 8, 6), ("e_orders_market", 23, 8, 16, 6),
+        ("d_revenue_market", 29, 0, 8, 6), ("e_revenue_market", 29, 8, 16, 6),
+        ("t_markets", 35, 0, 24, 10),
+        ("# Performance by shipping country", 45, 0, 24, 2),
+        ("t_countries", 47, 0, 24, 12),
     ]),
     ("Products", BASE + FILTRES_PRODUIT, [
         ("# Performance by product", 0, 0, 24, 2),
@@ -928,11 +926,12 @@ ONGLETS = [
     ]),
     ("Retail", BASE + ("store_id",), [
         ("# Retail", 0, 0, 24, 2),
-        ("kpi_retail_revenue", 2, 0, 5, KPI), ("kpi_retail_orders", 2, 5, 5, KPI), ("kpi_retail_aov", 2, 10, 4, KPI), ("kpi_retail_new_customers", 2, 14, 5, KPI), ("kpi_retail_refund_value", 2, 19, 5, KPI),
-        ("c_retail", 5, 0, 24, 6),
-        ("t_stores", 11, 0, 24, 15),
-        ("# Web and retail", 26, 0, 24, 2),
-        ("e_web_retail_revenue", 28, 0, 12, 7), ("e_web_retail_new", 28, 12, 12, 7),
+        ("kpi_retail_revenue", 2, 0, 8, KPI), ("kpi_retail_orders", 2, 8, 8, KPI), ("kpi_retail_aov", 2, 16, 8, KPI),
+        ("kpi_retail_new_customers", 5, 0, 12, KPI), ("kpi_retail_refund_value", 5, 12, 12, KPI),
+        ("c_retail", 8, 0, 24, 6),
+        ("t_stores", 14, 0, 24, 15),
+        ("# Web and retail", 29, 0, 24, 2),
+        ("e_web_retail_revenue", 31, 0, 12, 7), ("e_web_retail_new", 31, 12, 12, 7),
     ]),
     ("Cohorts & CRM", (), [
         ("# Cohorts", 0, 0, 24, 2),
@@ -1228,6 +1227,15 @@ def controler_age(mb, did, d):
 SANS_SPLIO = ("NEW_CUSTOMERS", "DELTA_NEW_CUSTOMERS", "BLENDED_NCAC", "DELTA_BLENDED_NCAC")
 
 
+def controler_embed(mb, did):
+    """Publié dans Nanga, le dashboard doit garder son client verrouillé : la table média porte tous les clients."""
+    d = dashboards.get_dashboard(mb, did)
+    reglages = d.get("embedding_params") or {}
+    ok = not d.get("enable_embedding") or (reglages.get("client") == "locked" and reglages.get("account") == "enabled" and reglages.get("platform") == "enabled")
+    print(f"  embed : actif {d.get('enable_embedding')}, client {reglages.get('client')}, compte {reglages.get('account')}, plateforme {reglages.get('platform')} {'OK' if ok else 'KO'}")
+    return 0 if ok else 1
+
+
 def controler(mb, did):
     d = dashboards.get_dashboard(mb, did)
     long_terme = parametres("2026-01-01~2026-09-30", "month")
@@ -1236,7 +1244,7 @@ def controler(mb, did):
     apres_chargement = parametres("past7days", "day")
     return (controler_tuiles(mb, did, d, long_terme, "janvier à septembre") + controler_tuiles(mb, did, d, defaut, "30 derniers jours")
             + controler_tuiles(mb, did, d, avec_comparaison, "30 jours contre septembre") + controler_tuiles(mb, did, d, apres_chargement, "7 jours après le chargement", SANS_SPLIO)
-            + controler_coherence(mb, did, d, long_terme) + controler_arret(mb, did, d) + controler_age(mb, did, d) + controler_filtres_media(mb, did, d) + controler_filtres_lies(mb, did))
+            + controler_coherence(mb, did, d, long_terme) + controler_arret(mb, did, d) + controler_age(mb, did, d) + controler_filtres_media(mb, did, d) + controler_filtres_lies(mb, did) + controler_embed(mb, did))
 
 
 def principal():
